@@ -122,7 +122,7 @@ sub readspec()
 {
     sub eval_macros($)
     {
-	my ($_, $rest) = split '#', $_[0], 2;
+	my ($m, $rest) = split '#', $_[0], 2;
 
 	sub _eval_it() {
 	    return '%' if $1 eq '%';
@@ -132,10 +132,10 @@ sub readspec()
 
 	#    s/%%/\001/g;
 	# dont be too picky if var is in format %{foo or $foo} ;) (i.e fix ltr)
-	s/%\{?(%|[\w\?\!]+)\}?/_eval_it/ge;
+	$m =~ s/%\{?(%|[\w\?\!]+)\}?/_eval_it/ge;
 	#    s/\001/%/g;
-	return $_ . '#' . $rest if (defined $rest);
-	return $_;
+	return $m . '#' . $rest if (defined $rest);
+	return $m;
     }
 
     sub readpackage($)
@@ -395,14 +395,14 @@ foreach (@pkgnames)
     }
     sub addfile($$)
     {
-	my $_ = $_[0];
+	my $f = $_[0];
 	if (/\*/) {
 	    foreach ( glob "$instroot/$_" ) {
-		_addfile substr($_, $instrlen + 1), $_[1];
+		_addfile substr($f, $instrlen + 1), $_[1];
 	    }
 	    return;
 	}
-	_addfile $_, $_[1];
+	_addfile $f, $_[1];
     }
 
     sub createsigheader($$)
