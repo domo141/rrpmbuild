@@ -201,6 +201,7 @@ sub readspec()
     }
 
     readpackage ($packages{''});
+    rest_macros; # XXX
     while (1) {
 	chomp, die "'$_': unsupported stanza format.\n"
 	  unless /^\s*%(\w+)\s*(\S*?)\s*$/;
@@ -239,7 +240,7 @@ close I;
 foreach (qw/name version release/) {
     die "Package $_ not known\n" unless (defined $macros{$_});
 }
-rest_macros;
+#rest_macros; # moved above for now. smarter variable expansion coming later.
 
 # XXX check what must be in "sub" packages
 foreach (qw/license summary group/) {
