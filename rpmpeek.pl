@@ -8,7 +8,29 @@ use warnings;
 
 $" = ', ';
 
-open I, '<', $ARGV[0] or die;
+my $extract = 0;
+if (defined $ARGV[0]) {
+    $extract = 1, shift @ARGV if $ARGV[0] eq '-x';
+}
+
+die "Usage: $0 [-x] file.rpm\n" unless defined $ARGV[0];
+
+open I, '<', $ARGV[0] or die "Cannot open '$ARGV[0]': $!.\n";
+
+my ($headerfile, $filesdir);
+if ($extract) {
+    ($headerfile = $ARGV[0]) =~ s/.rpm$//;
+    sub _otw($) {
+	die "Cannot extract: '$_[0]' is on the way.\n" if -e $_[0];
+    }
+    $filesdir = "$headerfile.files";
+    $headerfile = "$headerfile.headers";
+    _otw $headerfile;
+    _otw $filesdir;
+    open H, '>', $headerfile or die "Cannot open '$headerfile': $!.\n";
+    print "Extracting '$ARGV[0]' headers into '$headerfile'\n";
+    select H;
+}
 
 my ($data, $tlen, $toff) = ('', 0, 0);
 sub readdata($)
@@ -245,7 +267,12 @@ readheader 1;
 readpad;
 readheader 0;
 
-my %plfmtcmds = ( cpio => 'cpio -t --quiet' );
+# XXX --no-absolute-filenames is gnu cpio extension...
+my $cpiocmd = $extract?
+  "(cd '$filesdir'; cpio -idv --no-absolute-filenames --quiet)":
+  'cpio -t --quiet';
+
+my %plfmtcmds = ( cpio => $cpiocmd );
 my %plcompcmds = ( gzip => 'gzip -dc',
 		   bzip2 => 'bzip2 -dc' );
 
@@ -254,9 +281,16 @@ die "'$plfmt': not known playload format\n" unless defined $plfmtcmd;
 my $plcompcmd = $plcompcmds{$plcomp};
 die "'$plcomp': not known playload compressor\n" unless defined $plcompcmd;
 
-print "\nArchive contents (at $tlen):\n";
+if ($extract) {
+    mkdir $filesdir;
+    print STDOUT "Extracting Archive (at $tlen) to '$filesdir'\n";
+}
+else {
+    print "\nArchive contents (at $tlen):\n";
+}
 
 seek I, $tlen, 0; # to reset buffered data.
 my $fd = fileno I;
 open STDIN, '<&=', $fd;
+#system "set -x; $plcompcmd | $plfmtcmd";
 system "$plcompcmd | $plfmtcmd";
