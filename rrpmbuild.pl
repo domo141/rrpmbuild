@@ -414,7 +414,8 @@ foreach (@pkgnames)
 	push @hdr, pack("NNNN", 1000, 4, 0, 1); # SIZE
 	push @hdr, pack("NNNN", 1004, 7, 4, 16); # MD5
 
-	push @hdr, pack("N", $_[0]); # add SIZE;
+	#push @hdr, pack("N", $_[0]); # add SIZE;
+	push @hdr, pack("N", $_[0] - 32); # add SIZE; # XXX -32 !!!
 	push @hdr, $_[1]; # add digest
 	return join('', @hdr) . "\0" x 4; # with align
     }
