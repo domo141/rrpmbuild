@@ -151,7 +151,7 @@ sub readspec()
 	    }
 	    last if /^\s*%/;
 	    if (/^\s*(\S+?)\s*:\s*(.*?)\s+$/) {
-		my $key = lc $1;
+		my ($K, $key) = ($1, lc $1);
 		my $val = $hashref->{$key};
 		if (defined $val) {
 		    $val = $val . ', ' . eval_macros $2;
@@ -162,8 +162,11 @@ sub readspec()
 		}
 		$hashref->{$key} = $val;
 		# Add format checks, too...
-		$macros{$key} = $val
-		  if $key eq 'name' || $key eq 'version' || $key eq 'release';
+		if ($key eq 'name' || $key eq 'version' || $key eq 'release') {
+		    die "error: line $.: Tag takes single token only: $K: $val\n"
+		      if $val =~ /\s/;
+		    $macros{$key} = $val
+		}
 		next;
 	    }
 	    chomp;
@@ -335,8 +338,8 @@ sub close_cpio_file()
 # make cpio, fill arrays
 foreach (@pkgnames)
 {
-    my ($fmode, $dmode, $uname, $gname, $isdoc, $isconfig);
-    my ($wdir, $pkgname, $spkg);
+    my ($fmode, $dmode, $uname, $gname, $havedoc);
+    my ($wdir, $pkgname, $swname, $spkg);
 
     sub getmd5sum($)
     {
@@ -353,7 +356,7 @@ foreach (@pkgnames)
     sub add2lists($$$$$)
     {
 	$_[0] =~ m%(.*/)(.+)% or die "'$_[0]': invalid path\n";
-	my ($dir, $base) = ($1, $2);
+	my ($dir, $base) = ('/' . $1, $2);
 	my $di = $dirs{$dir};
 	unless (defined $di) {
 	    $di = $dirs{$dir} = scalar @dirs;
@@ -377,7 +380,13 @@ foreach (@pkgnames)
 	#if (/\*/)...
 	# XXX pkgname has ${release}...
 	warn "Adding doc file $_[0]\n";
-	my $fname = "usr/share/doc/$pkgname/" . $_[0];
+	my $dname = "usr/share/doc/$swname";
+	unless (defined $havedoc) {
+	    my ($mode, $size, $mtime) = file_to_cpio($dname, $dmode, '.');
+	    add2lists($dname, $mode, $size, $mtime, $_[0]);
+	    $havedoc = 1;
+	}
+	my $fname = $dname . '/' . $_[0];
 	my ($mode, $size, $mtime) = file_to_cpio($fname, $fmode, $_[0]);
 	add2lists($fname, $mode, $size, $mtime, $_[0]);
     }
@@ -421,12 +430,16 @@ foreach (@pkgnames)
 	my @hdr;
 
 	push @hdr, pack("CCCCNNN", 0x8e, 0xad, 0xe8, 0x01, 0, 2, 20);
+	#push @hdr, pack("CCCCNNN", 0x8e, 0xad, 0xe8, 0x01, 0, 3, 36);
+	#push @hdr, pack("NNNN", 62, 7, 20, 16); # HDRSIG
 	push @hdr, pack("NNNN", 1000, 4, 0, 1); # SIZE
 	push @hdr, pack("NNNN", 1004, 7, 4, 16); # MD5
 
 	#push @hdr, pack("N", $_[0]); # add SIZE;
 	push @hdr, pack("N", $_[0] - 32); # add SIZE; # XXX -32 !!!
 	push @hdr, $_[1]; # add digest
+	#push @hdr, pack("CCCCCCCCCCCCCCCC", 0x00, 0x00, 0x00, 0x3e, 0x00, 0x00,
+	#		0x00, 0x07, 0xff, 0xff, 0xff, 0xb0, 0x00, 0x00, 0x00, 0x10);
 	return join('', @hdr) . "\0" x 4; # with align
     }
 
@@ -496,28 +509,30 @@ foreach (@pkgnames)
 	$count = scalar @gnames;
 	_append(1040, 8, $count, join("\000", @gnames) . "\000");
 
+	my $pad;
 	# align 8 for making shure...
 	if ($count & 7) {
-	    my $pad = 8 - ($count & 7);
+	    $pad = 8 - ($count & 7);
 	    $cdh_extras++;
 	    $cdh_offset += $pad, push @cdh_data, "\000" x $pad;
 	}
+	else { $pad = 0; }
 
 	my $header = join '', @cdh_data;
 	my $hdrhdr = pack "CCCCNNN", 0x8e, 0xad, 0xe8, 0x01, 0,
-	  scalar @cdh_data - $cdh_extras, length $header;
+	  scalar @cdh_data - $cdh_extras, length($header) - $pad; # ### ???
 
 	return $hdrhdr . join('', @cdh_index) . $header;
     }
 
     $spkg = $_;
-    my $mname = $macros{name}; $mname =~ s/\s/-/g;
     if (length $_) {
-	$pkgname = "$mname-$spkg-$macros{version}-$macros{release}";
+	$swname = "$macros{name}-$spkg-$macros{version}";
     }
     else {
-	$pkgname = "$mname-$macros{version}-$macros{release}";
+	$swname = "$macros{name}-$macros{version}";
     }
+    $pkgname = "$swname-$macros{release}.$target_arch";
     $wdir = 'rrpmbuild/' . $pkgname;
 
     system ('/bin/rm', '-rf', $wdir);
@@ -557,7 +572,8 @@ foreach (@pkgnames)
 	    }
 	    last;
 	}
-	addfile $1, $isdir if /^\s*(\S+)\s+$/; # XXX no whitespace in filenames
+	# XXX add check must start with / (and allow whitespaces (mayber)
+	addfile $1, $isdir if /^\s*\/(\S+)\s+$/; # XXX no whitespace in filenames
     }
     close_cpio_file;
 
@@ -571,7 +587,7 @@ foreach (@pkgnames)
     my $shdr = createsigheader length($dhdr) + -s "$cpiofile.gz", $ctx->digest;
 
     open STDOUT, '>', "$wdir.rpm" or die $!;
-    my $leadname = substr "$pkgname.rpm", 0, 65;
+    my $leadname = substr "$swname-$macros{release}", 0, 65;
     print pack 'NCCnnZ66nnZ16', 0xedabeedb, 3, 0, 0,
 	$os_canon, $leadname, $arch_canon, 5, "\0";
     print $shdr, $dhdr;
