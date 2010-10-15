@@ -394,12 +394,12 @@ foreach (@pkgnames)
 	my ($mode,$size,$mtime) = file_to_cpio($_[0], $fmode, "$instroot/$_[0]");
 	add2lists($_[0], $mode, $size, $mtime, "$instroot/$_[0]");
     }
-    sub addfile($$)
+    sub addfile($$) # file, isdir
     {
 	my $f = $_[0];
 	if (/\*/) {
-	    foreach ( glob "$instroot/$_" ) {
-		_addfile substr($f, $instrlen + 1), $_[1];
+	    foreach ( glob "$instroot/$f" ) {
+		_addfile substr($_, $instrlen + 1), $_[1];
 	    }
 	    return;
 	}
@@ -502,11 +502,12 @@ foreach (@pkgnames)
     }
 
     $spkg = $_;
+    my $mname = $macros{name}; $mname =~ s/\s/-/g;
     if (length $_) {
-	$pkgname = "$macros{name}-$spkg-$macros{version}-$macros{release}";
+	$pkgname = "$mname-$spkg-$macros{version}-$macros{release}";
     }
     else {
-	$pkgname = "$macros{name}-$macros{version}-$macros{release}";
+	$pkgname = "$mname-$macros{version}-$macros{release}";
     }
     $wdir = 'rrpmbuild/' . $pkgname;
 
