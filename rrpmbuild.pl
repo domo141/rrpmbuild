@@ -48,9 +48,9 @@ use Digest::MD5;
 
 my %arch_canon = ( i686 => 1, i586 => 1, i486 => 1, i386 => 1, x86_64 => 1,
 		   armv3l => 12, armv4b => 12, armv4l => 12, armv5tel => 12,
-		   armv5tejl => 12, armv6l => 12, armv7l => 12 );
+		   armv5tejl => 12, armv6l => 12, armv7l => 12, arm => 12 );
 
-my %os_canon = ( linux => 1 );
+my %os_canon = ( Linux => 1 );
 
 # packages array defines order for packages + other hashes.
 my @pkgnames = ('');
@@ -232,6 +232,15 @@ sub readspec()
 
 die "Usage: $0 -bb <specfile>\n" unless @ARGV == 2 && $ARGV[0] eq '-bb';
 die "$ARGV[1]: not a file\n" unless -f $ARGV[1];
+
+my ($target_os, $target_arch) = split /\s+/, qx/uname -m -s/;
+my $os_canon = $os_canon{$target_os};
+my $arch_canon = $arch_canon{$target_arch};
+
+# XXX should ignore for noarch.. (maybe) so check later...
+die "'$target_os': unknown os\n" unless defined $os_canon;
+die "'$target_arch': unknown arch\n" unless defined $os_canon;
+
 
 init_macros;
 open I, '<', $ARGV[1] or die;
@@ -460,8 +469,8 @@ foreach (@pkgnames)
 	_append(1009, 4, 1, pack("N", $cpio_dsize) ); # size
 	_append(1014, 6, 1, "$packages{''}->[1]->{license}\000"); # license, atm
 	_append(1016, 6, 1, "$packages{$_[0]}->[1]->{group}\000"); # group, atm
-	_append(1021, 6, 1, "Linux\000"); # os
-	_append(1022, 6, 1, "arm\000"); # arch
+	_append(1021, 6, 1, "$target_os\000"); # os
+	_append(1022, 6, 1, "$target_arch\000"); # arch
 	_append(1046, 4, 1, pack("N", -s $_[1]) ); # archivesize
 	_append(1047, 6, 1, "$macros{name}\000"); # providename
 	_append(1124, 6, 1, "cpio\000"); # payloadfmt
@@ -563,7 +572,8 @@ foreach (@pkgnames)
 
     open STDOUT, '>', "$wdir.rpm" or die $!;
     my $leadname = substr "$pkgname.rpm", 0, 65;
-    print pack 'NCCnnZ66nnZ16', 0xedabeedb, 3, 0, 0, 12, $leadname, 1, 5, "\0";
+    print pack 'NCCnnZ66nnZ16', 0xedabeedb, 3, 0, 0,
+	$os_canon, $leadname, $arch_canon, 5, "\0";
     print $shdr, $dhdr;
     system('/bin/cat' ,"$cpiofile.gz");
     open STDOUT, ">&STDERR" or die;
