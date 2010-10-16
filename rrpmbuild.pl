@@ -510,9 +510,9 @@ foreach (@pkgnames)
 	_append(1040, 8, $count, join("\000", @gnames) . "\000");
 
 	my $pad;
-	# align 8 for making shure...
-	if ($count & 7) {
-	    $pad = 8 - ($count & 7);
+	# align 4 for making shure... (was eight... if that, neither this needed)
+	if ($count & 3) {
+	    $pad = 4 - ($count & 3);
 	    $cdh_extras++;
 	    $cdh_offset += $pad, push @cdh_data, "\000" x $pad;
 	}
