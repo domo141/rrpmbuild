@@ -485,9 +485,11 @@ foreach (@pkgnames)
 	_append(1021, 6, 1, "$target_os\000"); # os
 	_append(1022, 6, 1, "$target_arch\000"); # arch
 	_append(1046, 4, 1, pack("N", -s $_[1]) ); # archivesize
-	_append(1047, 6, 1, "$macros{name}\000"); # providename
 	_append(1124, 6, 1, "cpio\000"); # payloadfmt
 	_append(1125, 6, 1, "gzip\000"); # payloadcomp
+
+	# 8, not 6 - 6 made rpm 4.8.1 crash mysteriously ;/
+	_append(1047, 8, 1, "$macros{name}\000"); # providename
 
 	my $count;
 	$count = scalar @files;
