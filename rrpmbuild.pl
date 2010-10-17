@@ -383,7 +383,7 @@ foreach (@pkgnames)
 	my $dname = "usr/share/doc/$swname";
 	unless (defined $havedoc) {
 	    my ($mode, $size, $mtime) = file_to_cpio($dname, $dmode, '.');
-	    add2lists($dname, $mode, $size, $mtime, $_[0]);
+	    add2lists($dname, $mode, $size, $mtime, undef);
 	    $havedoc = 1;
 	}
 	my $fname = $dname . '/' . $_[0];
