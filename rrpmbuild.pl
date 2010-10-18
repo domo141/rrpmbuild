@@ -430,7 +430,7 @@ foreach (@pkgnames)
 	}
 
 	# XXX add check must start with / (and allow whitespaces (mayber)
-	addfile $1, $isdir if /^\s*\/(\S+)\s+$/; # XXX no whitespace in filenames
+	addfile $1, $isdir if /^\s*\/+(\S+?)\/*\s+$/; # XXX no whitespace in filenames
     }
 
     my (@files, @dirindexes, @dirs, %dirs, @modes, @sizes, @mtimes);
@@ -447,8 +447,8 @@ foreach (@pkgnames)
 	    return $ctx->hexdigest;
 	}
 
-	$_[0] =~ m%(.*/)(.+)% or die "'$_[0]': invalid path\n";
-	my ($dir, $base) = ('/' . $1, $2);
+	$_[0] =~ m%((.*/)?)(.+)% or die "'$_[0]': invalid path\n";
+	my ($dir, $base) = ('/' . $2, $3);
 	my $di = $dirs{$dir};
 	unless (defined $di) {
 	    $di = $dirs{$dir} = scalar @dirs;
@@ -584,9 +584,6 @@ foreach (@pkgnames)
 
 	return $hdrhdr . join('', @cdh_index) . $header;
     }
-
-
-
 
     my $dhdr = createdataheader $spkg, $cpiofile;
     system 'gzip', $cpiofile;
