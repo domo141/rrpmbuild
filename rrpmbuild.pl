@@ -561,26 +561,22 @@ foreach (@pkgnames)
 	$count = scalar @sizes;
 	_append(1028, 4, $count, pack "N" . $count, @sizes);
 	$count = scalar @mtimes;
-	_append(1034, 4, $count, pack "N" . $count, @mtimes);
-	$count = scalar @md5sums;
+	# moved last.
+	#_append(1034, 4, $count, pack "N" . $count, @mtimes);
+	#$count = scalar @md5sums;
 	_append(1035, 8, $count, join("\000", @md5sums) . "\000");
 	$count = scalar @unames;
 	_append(1039, 8, $count, join("\000", @unames) . "\000");
 	$count = scalar @gnames;
 	_append(1040, 8, $count, join("\000", @gnames) . "\000");
 
-	my $pad;
-	# align 4
-	if ($cdh_offset & 3) {
-	    $pad = 4 - ($cdh_offset & 3);
-	    $cdh_extras++;
-	    $cdh_offset += $pad, push @cdh_data, "\000" x $pad;
-	}
-	else { $pad = 0; }
+	# mtimes moved last, so that header is aligned by 4...
+	_append(1034, 4, $count, pack "N" . $count, @mtimes);
+	$count = scalar @md5sums;
 
 	my $header = join '', @cdh_data;
 	my $hdrhdr = pack "CCCCNNN", 0x8e, 0xad, 0xe8, 0x01, 0,
-	  scalar @cdh_data - $cdh_extras, length($header) - $pad; # ### ???
+	  scalar @cdh_data - $cdh_extras, length($header);
 
 	return $hdrhdr . join('', @cdh_index) . $header;
     }
