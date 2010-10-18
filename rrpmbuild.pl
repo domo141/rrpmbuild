@@ -448,7 +448,7 @@ foreach (@pkgnames)
 	}
 
 	$_[0] =~ m%((.*/)?)(.+)% or die "'$_[0]': invalid path\n";
-	my ($dir, $base) = ('/' . $2, $3);
+	my ($dir, $base) = ('/' . $1, $3);
 	my $di = $dirs{$dir};
 	unless (defined $di) {
 	    $di = $dirs{$dir} = scalar @dirs;
