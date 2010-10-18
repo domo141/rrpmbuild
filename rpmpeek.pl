@@ -289,8 +289,17 @@ else {
     print "\nArchive contents (at $tlen):\n";
 }
 
-seek I, $tlen, 0; # to reset buffered data.
+# for windows msys perl 5.6
+use POSIX qw/lseek/;
 my $fd = fileno I;
-open STDIN, '<&=', $fd;
+lseek($fd, $tlen, 0); # to reset buffered data.
+open STDIN, "<&$fd"; # for perl 5.6, and windows msys.
+
+# this works elsewhere...
+#seek I, $tlen, 0 or die "$!"; # to reset buffered data.
+#open STDIN, '<&=', \*I;
+#open STDIN, '<&', \*I;
+#open STDIN, '<&I'; # for perl 5.6
+
 #system "set -x; $plcompcmd | $plfmtcmd";
 system "$plcompcmd | $plfmtcmd";
