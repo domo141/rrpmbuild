@@ -334,46 +334,11 @@ sub close_cpio_file()
 }
 
 
-# make cpio, fill arrays
+# fill arrays, make cpio
 foreach (@pkgnames)
 {
     my ($fmode, $dmode, $uname, $gname, $havedoc);
-    my ($wdir, $pkgname, $swname, $spkg);
-
-    sub getmd5sum($)
-    {
-	my $ctx = Digest::MD5->new;
-	#XXX warn $_[0];
-	open J, '<', $_[0] or die $!;
-	$ctx->addfile(*J);
-	close J;
-	return $ctx->hexdigest;
-    }
-
-    my (@files, @dirindexes, @dirs, %dirs, @modes, @sizes, @mtimes);
-    my (@unames, @gnames, @md5sums);
-    sub add2lists($$$$$)
-    {
-	$_[0] =~ m%(.*/)(.+)% or die "'$_[0]': invalid path\n";
-	my ($dir, $base) = ('/' . $1, $2);
-	my $di = $dirs{$dir};
-	unless (defined $di) {
-	    $di = $dirs{$dir} = scalar @dirs;
-	    push @dirs, $dir;
-	}
-	push @files, $base;
-	push @dirindexes, $di;
-
-	push @modes, $_[1];
-	push @sizes, $_[2];
-	push @mtimes, $_[3];
-	push @unames, $uname;
-	push @gnames, $gname;
-	if (defined $_[4]) {
-	    push @md5sums, getmd5sum $_[4];
-	}
-	else { push @md5sums, ''; }
-    }
+    my ($wdir, $pkgname, $swname, $spkg, @filelist);
 
     sub addocfile($) {
 	#if (/\*/)...
@@ -381,13 +346,11 @@ foreach (@pkgnames)
 	warn "Adding doc file $_[0]\n";
 	my $dname = "usr/share/doc/$swname";
 	unless (defined $havedoc) {
-	    my ($mode, $size, $mtime) = file_to_cpio($dname, $dmode, '.');
-	    add2lists($dname, $mode, $size, $mtime, undef);
+	    push @filelist, [ $dname, $dmode, $uname, $gname, '.' ];
 	    $havedoc = 1;
 	}
 	my $fname = $dname . '/' . $_[0];
-	my ($mode, $size, $mtime) = file_to_cpio($fname, $fmode, $_[0]);
-	add2lists($fname, $mode, $size, $mtime, $_[0]);
+	push @filelist, [ $fname, $fmode, $uname, $gname, $_[0] ];
     }
 
     my @_flist;
@@ -396,20 +359,22 @@ foreach (@pkgnames)
     {
 	if (-d "$instroot/$_[0]") {
 	    warn "Adding directory $_[0]\n";
-	    my ($mode,$size,$mtime) = file_to_cpio($_[0], $dmode, "$instroot/$_[0]");
-	    add2lists($_[0], $mode, $size, $mtime, undef);
+
+	    push @filelist,
+	      [ $_[0], $dmode, $uname, $gname, "$instroot/$_[0]" ];
 
 	    return if $_[1];
 	    sub _f() { push @_flist, (substr $_, $instrlen + 1); }
 	    @_flist = ();
 	    find({wanted =>\&_f, no_chdir => 1}, "$instroot/$_[0]");
 	    shift @_flist;
-	    _addfile($_, 1) foreach ( sort @_flist );
+	    _addfile($_, 1) foreach ( @_flist ); # sorted later.
+	    #_addfile($_, 1) foreach ( sort @_flist );
 	    return;
 	}
 	warn "Adding file $_[0]\n";
-	my ($mode,$size,$mtime) = file_to_cpio($_[0], $fmode, "$instroot/$_[0]");
-	add2lists($_[0], $mode, $size, $mtime, "$instroot/$_[0]");
+	push @filelist,
+	  [ $_[0], $fmode, $uname, $gname, "$instroot/$_[0]" ];
     }
     sub addfile($$) # file, isdir
     {
@@ -431,15 +396,8 @@ foreach (@pkgnames)
 	$swname = "$macros{name}-$macros{version}";
     }
     $pkgname = "$swname-$macros{release}.$target_arch";
-    $wdir = 'rrpmbuild/' . $pkgname;
-
-    system ('/bin/rm', '-rf', $wdir);
-    system ('/bin/mkdir', '-p', $wdir);
 
     my ($deffmode, $defdmode, $defuname, $defgname) = qw/0644 0755 root root/;
-
-    my $cpiofile = $wdir . '/cpio';
-    open_cpio_file $cpiofile;
 
     LINE: foreach (@{$files{$spkg}}) {
 	($fmode, $dmode, $uname, $gname) = ($deffmode,$defdmode,$defuname,$defgname);
@@ -470,8 +428,56 @@ foreach (@pkgnames)
 	    }
 	    last;
 	}
+
 	# XXX add check must start with / (and allow whitespaces (mayber)
 	addfile $1, $isdir if /^\s*\/(\S+)\s+$/; # XXX no whitespace in filenames
+    }
+
+    my (@files, @dirindexes, @dirs, %dirs, @modes, @sizes, @mtimes);
+    my (@unames, @gnames, @md5sums);
+    sub add2lists($$$$$$$)
+    {
+	sub getmd5sum($)
+	{
+	    my $ctx = Digest::MD5->new;
+	    #XXX warn $_[0];
+	    open J, '<', $_[0] or die $!;
+	    $ctx->addfile(*J);
+	    close J;
+	    return $ctx->hexdigest;
+	}
+
+	$_[0] =~ m%(.*/)(.+)% or die "'$_[0]': invalid path\n";
+	my ($dir, $base) = ('/' . $1, $2);
+	my $di = $dirs{$dir};
+	unless (defined $di) {
+	    $di = $dirs{$dir} = scalar @dirs;
+	    push @dirs, $dir;
+	}
+	push @files, $base;
+	push @dirindexes, $di;
+
+	push @modes, $_[1];
+	push @sizes, $_[2];
+	push @mtimes, $_[3];
+	push @unames, $_[4];
+	push @gnames, $_[5];
+	if (-f $_[6]) {
+	    push @md5sums, getmd5sum $_[6];
+	}
+	else { push @md5sums, ''; }
+    }
+
+    $wdir = 'rrpmbuild/' . $pkgname;
+
+    system ('/bin/rm', '-rf', $wdir);
+    system ('/bin/mkdir', '-p', $wdir);
+
+    my $cpiofile = $wdir . '/cpio';
+    open_cpio_file $cpiofile;
+    foreach (sort { $a->[0] cmp $b->[0] } @filelist) {
+	my ($mode, $size, $mtime) = file_to_cpio($_->[0], $_->[1], $_->[4]);
+	add2lists($_->[0], $mode, $size, $mtime, $_->[2], $_->[3], $_->[4]);
     }
     close_cpio_file;
 
