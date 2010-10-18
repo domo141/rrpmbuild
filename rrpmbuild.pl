@@ -242,8 +242,7 @@ my $arch_canon = $arch_canon{$target_arch};
 
 # XXX should ignore for noarch.. (maybe) so check later...
 die "'$target_os': unknown os\n" unless defined $os_canon;
-die "'$target_arch': unknown arch\n" unless defined $os_canon;
-
+die "'$target_arch': unknown arch\n" unless defined $arch_canon;
 
 init_macros;
 open I, '<', $ARGV[1] or die;
@@ -424,6 +423,58 @@ foreach (@pkgnames)
 	_addfile $f, $_[1];
     }
 
+    $spkg = $_;
+    if (length $_) {
+	$swname = "$macros{name}-$spkg-$macros{version}";
+    }
+    else {
+	$swname = "$macros{name}-$macros{version}";
+    }
+    $pkgname = "$swname-$macros{release}.$target_arch";
+    $wdir = 'rrpmbuild/' . $pkgname;
+
+    system ('/bin/rm', '-rf', $wdir);
+    system ('/bin/mkdir', '-p', $wdir);
+
+    my ($deffmode, $defdmode, $defuname, $defgname) = qw/0644 0755 root root/;
+
+    my $cpiofile = $wdir . '/cpio';
+    open_cpio_file $cpiofile;
+
+    LINE: foreach (@{$files{$spkg}}) {
+	($fmode, $dmode, $uname, $gname) = ($deffmode,$defdmode,$defuname,$defgname);
+	my ($isdir, $isconfig, $isdoc) = (0, 0, 0);
+	while (1) {
+	    if (s/\001(def)?attr\001\((.+?)\)//) {
+		my @attrs = split /\s*,\s*/, $2;
+
+		$fmode = $attrs[0] if (defined $attrs[0] && $attrs[0] ne '-');
+		$uname = $attrs[1] if (defined $attrs[1] && $attrs[1] ne '-');
+		$gname = $attrs[2] if (defined $attrs[2] && $attrs[2] ne '-');
+		$dmode = $attrs[3] if (defined $attrs[3] && $attrs[3] ne '-');
+		# XXX should check that are numeric and in right range.
+		$fmode = oct $fmode; $dmode = oct $dmode;
+		($deffmode,$defdmode,$defuname,$defgname)
+		  = ($fmode, $dmode, $uname, $gname) if defined $1;
+		next;
+	    }
+	    $isdir = 1, next if s/\001dir\001//;
+	    $isconfig = 1, next if s/\001config\001//;
+	    # last, as slurps end of line (won't do better! ambiquous if.)
+	    if (s/\001doc\001//) {
+		$isdoc = 1;
+		foreach (split /\s+/) {
+		    addocfile $_ if length $_;
+		}
+		next LINE;
+	    }
+	    last;
+	}
+	# XXX add check must start with / (and allow whitespaces (mayber)
+	addfile $1, $isdir if /^\s*\/(\S+)\s+$/; # XXX no whitespace in filenames
+    }
+    close_cpio_file;
+
     sub createsigheader($$)
     {
 	# all hardcoded (use _append later, when proof-of-concept ready)
@@ -444,6 +495,7 @@ foreach (@pkgnames)
     }
 
     my (@cdh_index, @cdh_data, $cdh_offset, $cdh_extras);
+
     sub createdataheader($$) # spkg, cpiofile
     {
 	@cdh_index = (); @cdh_data = (); $cdh_offset = 0; $cdh_extras = 0;
@@ -527,57 +579,8 @@ foreach (@pkgnames)
 	return $hdrhdr . join('', @cdh_index) . $header;
     }
 
-    $spkg = $_;
-    if (length $_) {
-	$swname = "$macros{name}-$spkg-$macros{version}";
-    }
-    else {
-	$swname = "$macros{name}-$macros{version}";
-    }
-    $pkgname = "$swname-$macros{release}.$target_arch";
-    $wdir = 'rrpmbuild/' . $pkgname;
 
-    system ('/bin/rm', '-rf', $wdir);
-    system ('/bin/mkdir', '-p', $wdir);
 
-    my ($deffmode, $defdmode, $defuname, $defgname) = qw/0644 0755 root root/;
-
-    my $cpiofile = $wdir . '/cpio';
-    open_cpio_file $cpiofile;
-
-    LINE: foreach (@{$files{$spkg}}) {
-	($fmode, $dmode, $uname, $gname) = ($deffmode,$defdmode,$defuname,$defgname);
-	my ($isdir, $isconfig, $isdoc) = (0, 0, 0);
-	while (1) {
-	    if (s/\001(def)?attr\001\((.+?)\)//) {
-		my @attrs = split /\s*,\s*/, $2;
-
-		$fmode = $attrs[0] if (defined $attrs[0] && $attrs[0] ne '-');
-		$uname = $attrs[1] if (defined $attrs[1] && $attrs[1] ne '-');
-		$gname = $attrs[2] if (defined $attrs[2] && $attrs[2] ne '-');
-		$dmode = $attrs[3] if (defined $attrs[3] && $attrs[3] ne '-');
-		# XXX should check that are numeric and in right range.
-		$fmode = oct $fmode; $dmode = oct $dmode;
-		($deffmode,$defdmode,$defuname,$defgname)
-		  = ($fmode, $dmode, $uname, $gname) if defined $1;
-		next;
-	    }
-	    $isdir = 1, next if s/\001dir\001//;
-	    $isconfig = 1, next if s/\001config\001//;
-	    # last, as slurps end of line (won't do better! ambiquous if.)
-	    if (s/\001doc\001//) {
-		$isdoc = 1;
-		foreach (split /\s+/) {
-		    addocfile $_ if length $_;
-		}
-		next LINE;
-	    }
-	    last;
-	}
-	# XXX add check must start with / (and allow whitespaces (mayber)
-	addfile $1, $isdir if /^\s*\/(\S+)\s+$/; # XXX no whitespace in filenames
-    }
-    close_cpio_file;
 
     my $dhdr = createdataheader $spkg, $cpiofile;
     system 'gzip', $cpiofile;
