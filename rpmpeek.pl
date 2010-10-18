@@ -258,14 +258,20 @@ sub readheader($)
 }
 
 # 8-align...
-sub readpad () {
+sub readpad8 () {
     my $pad = $tlen & 7;
     readdata 8 - $pad if $pad;
 }
+# XXX should rrpmbuild pad at all ?
+sub readpad4 () {
+    my $pad = $tlen & 3;
+    readdata 4 - $pad if $pad;
+}
 
 readheader 1;
-readpad;
+readpad8;
 readheader 0;
+readpad4;
 
 # XXX --no-absolute-filenames is gnu cpio extension...
 my $cpiocmd = $extract?
