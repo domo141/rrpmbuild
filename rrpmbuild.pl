@@ -397,7 +397,7 @@ foreach (@pkgnames)
     }
     $pkgname = "$swname-$macros{release}.$target_arch";
 
-    my ($deffmode, $defdmode, $defuname, $defgname) = qw/0644 0755 root root/;
+    my ($deffmode, $defdmode, $defuname, $defgname) = qw/-1 -1 root root/;
 
     LINE: foreach (@{$files{$spkg}}) {
 	($fmode, $dmode, $uname, $gname) = ($deffmode,$defdmode,$defuname,$defgname);
@@ -406,12 +406,13 @@ foreach (@pkgnames)
 	    if (s/\001(def)?attr\001\((.+?)\)//) {
 		my @attrs = split /\s*,\s*/, $2;
 
-		$fmode = $attrs[0] if (defined $attrs[0] && $attrs[0] ne '-');
-		$uname = $attrs[1] if (defined $attrs[1] && $attrs[1] ne '-');
-		$gname = $attrs[2] if (defined $attrs[2] && $attrs[2] ne '-');
-		$dmode = $attrs[3] if (defined $attrs[3] && $attrs[3] ne '-');
+		$fmode = $attrs[0] if defined $attrs[0];
+		$uname = $attrs[1] if defined $attrs[1];
+		$gname = $attrs[2] if defined $attrs[2];
+		$dmode = $attrs[3] if defined $attrs[3];
 		# XXX should check that are numeric and in right range.
-		$fmode = oct $fmode; $dmode = oct $dmode;
+		$fmode = $fmode eq '-'? -1: oct $fmode;
+		$dmode = $dmode eq '-'? -1: oct $dmode;
 		($deffmode,$defdmode,$defuname,$defgname)
 		  = ($fmode, $dmode, $uname, $gname) if defined $1;
 		next;
@@ -466,6 +467,15 @@ foreach (@pkgnames)
 	    push @md5sums, getmd5sum $_[6];
 	}
 	else { push @md5sums, ''; }
+    }
+
+    # Do permission check in separate loop as linux/windows functionality
+    # differs when checking permissions from filesystem.
+
+    # Cygwin can(?) handle permissions, Native w32/64 not supported ATM.
+    if ($^O eq 'msys') {
+    }
+    else {
     }
 
     $wdir = 'rrpmbuild/' . $pkgname;
