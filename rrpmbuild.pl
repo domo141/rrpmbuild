@@ -40,7 +40,6 @@ use Digest::MD5;
 #  only binary rpms (so far)
 #  only -bb now, more -b -optios later. some --:s too...
 
-
 # bottom line: the spec files that rrpmbuild can build, are also buildable
 # with standard rpm, but not wise versa.
 
@@ -333,6 +332,37 @@ sub close_cpio_file()
     open STDOUT, ">&STDERR" or die;
 }
 
+sub xfork()
+{
+    my $pid = fork();
+    die "fork() failed: $!\n" unless defined $pid;
+    return $pid;
+}
+
+sub xpIopen(@)
+{
+    pipe I, WRITE or die "pipe() failed: $!\n";
+    if (xfork) {
+	# parent;
+	close WRITE;
+	return;
+    }
+    # child
+    my $dir = shift;
+    close I;
+    open STDOUT, ">&WRITE" or die "dup2() failed: $!\n";
+    if ($dir) {
+	chdir $dir or die "chdir failed: $!\n";
+    }
+    exec @_;
+    die "execve() failed: $!\n";
+}
+sub xpIclose()
+{
+    close I;
+    return wait;
+}
+
 
 # fill arrays, make cpio
 foreach (@pkgnames)
@@ -397,7 +427,7 @@ foreach (@pkgnames)
     }
     $pkgname = "$swname-$macros{release}.$target_arch";
 
-    my ($deffmode, $defdmode, $defuname, $defgname) = qw/0644 0755 root root/;
+    my ($deffmode, $defdmode, $defuname, $defgname) = qw/-1 -1 root root/;
 
     LINE: foreach (@{$files{$spkg}}) {
 	($fmode, $dmode, $uname, $gname) = ($deffmode,$defdmode,$defuname,$defgname);
@@ -406,12 +436,13 @@ foreach (@pkgnames)
 	    if (s/\001(def)?attr\001\((.+?)\)//) {
 		my @attrs = split /\s*,\s*/, $2;
 
-		$fmode = $attrs[0] if (defined $attrs[0] && $attrs[0] ne '-');
-		$uname = $attrs[1] if (defined $attrs[1] && $attrs[1] ne '-');
-		$gname = $attrs[2] if (defined $attrs[2] && $attrs[2] ne '-');
-		$dmode = $attrs[3] if (defined $attrs[3] && $attrs[3] ne '-');
+		$fmode = $attrs[0] if defined $attrs[0];
+		$uname = $attrs[1] if defined $attrs[1];
+		$gname = $attrs[2] if defined $attrs[2];
+		$dmode = $attrs[3] if defined $attrs[3];
 		# XXX should check that are numeric and in right range.
-		$fmode = oct $fmode; $dmode = oct $dmode;
+		$fmode = $fmode eq '-'? -1: oct $fmode;
+		$dmode = $dmode eq '-'? -1: oct $dmode;
 		($deffmode,$defdmode,$defuname,$defgname)
 		  = ($fmode, $dmode, $uname, $gname) if defined $1;
 		next;
@@ -466,6 +497,39 @@ foreach (@pkgnames)
 	    push @md5sums, getmd5sum $_[6];
 	}
 	else { push @md5sums, ''; }
+    }
+
+    # Do permission check in separate loop as linux/windows functionality
+    # differs when checking permissions from filesystem.
+
+    # Cygwin can(?) handle permissions, Native w32/64 not supported ATM.
+    if ($^O eq 'msys') {
+	my (@flist, %flist);
+	foreach (@filelist) {
+	    push @flist, $_[4] if ($_->[1] < 0);
+	}
+	xpIopen '', 'file', @flist;
+	while (<I>) {
+	    /(.*):\s+(.*)/;
+	    my $fn = $1;
+	    $flist{$fn} = 0755, next if $2 =~ /executable/;
+	    $flist{$fn} = 0644;
+	}
+	xpIclose;
+	foreach (@filelist) {
+	    if ($_->[1] < 0) {
+		my $perm = $flist{$_->[4]} or "die '$_->[4]' not found.\n";
+		$_->[1] = $perm;
+	    }
+	}
+    }
+    else { # unices!
+	foreach (@filelist) {
+	    if ($_->[1] < 0) {
+		my @sb = stat $_->[4] or die "stat $_->[4]: $!\n";
+		$_->[1] = $sb[2] & 0777;
+	    }
+	}
     }
 
     $wdir = 'rrpmbuild/' . $pkgname;
