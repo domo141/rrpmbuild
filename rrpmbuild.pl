@@ -518,7 +518,7 @@ foreach (@pkgnames)
 	xpIclose;
 	foreach (@filelist) {
 	    if ($_->[1] < 0) {
-		my $perm = $flist{$_->[4]} or "die '$_->[4]' not found.\n";
+		my $perm = $flist{$_->[4]} or die "'$_->[4]' not found.\n";
 		$_->[1] = $perm;
 	    }
 	}
