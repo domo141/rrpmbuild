@@ -181,6 +181,14 @@ sub readspec()
 	}
     }
 
+    sub readlines2string($)
+    {
+	my @list;
+	readlines \@list;
+	$_[0] = join '', @list;
+	$_[0] =~ s/\s*$//;
+    }
+
     sub readfiles($)
     {
 	# doing stuff to catch more errors early, i.e. not after build
@@ -220,10 +228,11 @@ sub readspec()
 	elsif ($1 eq 'clean') {   readlines \@clean; }
 
 	elsif ($1 eq 'files') { readfiles ($files{$2} = [ ]); }
-	elsif ($1 eq 'pre') { readlines ($pre{$2} = [ ]); }
-	elsif ($1 eq 'post') { readlines ($post{$2} = [ ]); }
-	elsif ($1 eq 'preun') { readlines ($preun{$2} = [ ]); }
-	elsif ($1 eq 'postun') { readlines ($postun{$2} = [ ]); }
+
+	elsif ($1 eq 'pre') { readlines2string $pre{$2}; }
+	elsif ($1 eq 'post') { readlines2string $post{$2}; }
+	elsif ($1 eq 'preun') { readlines2string $preun{$2}; }
+	elsif ($1 eq 'postun') { readlines2string $postun{$2}; }
 
 	elsif ($1 eq 'changelog') { readlines \@changelog; }
 
@@ -368,7 +377,7 @@ sub xpIclose()
 foreach (@pkgnames)
 {
     my ($fmode, $dmode, $uname, $gname, $havedoc);
-    my ($wdir, $pkgname, $swname, $spkg, @filelist);
+    my ($wdir, $pkgname, $swname, $npkg, @filelist);
 
     sub addocfile($) {
 	#if (/\*/)...
@@ -418,9 +427,9 @@ foreach (@pkgnames)
 	_addfile $f, $_[1];
     }
 
-    $spkg = $_;
+    $npkg = $_;
     if (length $_) {
-	$swname = "$macros{name}-$spkg-$macros{version}";
+	$swname = "$macros{name}-$npkg-$macros{version}";
     }
     else {
 	$swname = "$macros{name}-$macros{version}";
@@ -429,7 +438,7 @@ foreach (@pkgnames)
 
     my ($deffmode, $defdmode, $defuname, $defgname) = qw/-1 -1 root root/;
 
-    LINE: foreach (@{$files{$spkg}}) {
+    LINE: foreach (@{$files{$npkg}}) {
 	($fmode, $dmode, $uname, $gname) = ($deffmode,$defdmode,$defuname,$defgname);
 	my ($isdir, $isconfig, $isdoc) = (0, 0, 0);
 	while (1) {
@@ -566,7 +575,7 @@ foreach (@pkgnames)
 
     my (@cdh_index, @cdh_data, $cdh_offset, $cdh_extras);
 
-    sub createdataheader($$) # spkg, cpiofile
+    sub createdataheader($$) # npkg, cpiofile
     {
 	@cdh_index = (); @cdh_data = (); $cdh_offset = 0; $cdh_extras = 0;
 	sub _append($$$$)
@@ -624,19 +633,36 @@ foreach (@pkgnames)
 	_append(1030, 3, $count, pack "n" . $count, @modes);
 	$count = scalar @sizes;
 	_append(1028, 4, $count, pack "N" . $count, @sizes);
-	$count = scalar @mtimes;
 	# moved last.
+	#$count = scalar @mtimes;
 	#_append(1034, 4, $count, pack "N" . $count, @mtimes);
-	#$count = scalar @md5sums;
+	$count = scalar @md5sums;
 	_append(1035, 8, $count, join("\000", @md5sums) . "\000");
 	$count = scalar @unames;
 	_append(1039, 8, $count, join("\000", @unames) . "\000");
 	$count = scalar @gnames;
 	_append(1040, 8, $count, join("\000", @gnames) . "\000");
 
+	if (defined $pre{$npkg}) {
+	    _append(1023, 6, 1, $pre{$npkg} . "\000");
+	    _append(1085, 6, 1, "/bin/sh\000"); # preprog
+	}
+	if (defined $post{$npkg}) {
+	    _append(1024, 6, 1, $post{$npkg} . "\000");
+	    _append(1086, 6, 1, "/bin/sh\000"); # postprog
+	}
+	if (defined $preun{$npkg}) {
+	    _append(1025, 6, 1, $preun{$npkg} . "\000");
+	    _append(1087, 6, 1, "/bin/sh\000"); # preunprog
+	}
+	if (defined $postun{$npkg}) {
+	    _append(1026, 6, 1, $postun{$npkg} . "\000");
+	    _append(1088, 6, 1, "/bin/sh\000"); # postunprog
+	}
+
 	# mtimes moved last, so that header is aligned by 4...
+	$count = scalar @mtimes;
 	_append(1034, 4, $count, pack "N" . $count, @mtimes);
-	$count = scalar @md5sums;
 
 	my $header = join '', @cdh_data;
 	my $hdrhdr = pack "CCCCNNN", 0x8e, 0xad, 0xe8, 0x01, 0,
@@ -645,7 +671,7 @@ foreach (@pkgnames)
 	return $hdrhdr . join('', @cdh_index) . $header;
     }
 
-    my $dhdr = createdataheader $spkg, $cpiofile;
+    my $dhdr = createdataheader $npkg, $cpiofile;
     system 'gzip', $cpiofile;
     my $ctx = Digest::MD5->new();
     $ctx->add($dhdr);
