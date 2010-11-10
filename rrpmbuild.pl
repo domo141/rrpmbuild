@@ -672,10 +672,11 @@ foreach (@pkgnames)
     }
 
     my $dhdr = createdataheader $npkg, $cpiofile;
-    system 'gzip', $cpiofile;
+    system 'gzip', '-n', $cpiofile;
     my $ctx = Digest::MD5->new();
     $ctx->add($dhdr);
-    open J, "$wdir/cpio.gz" or die $!;
+    #system "md5sum $cpiofile.gz >/dev/tty";
+    open J, "$cpiofile.gz" or die $!;
     $ctx->addfile(*J);
     close J;
     my $shdr = createsigheader length($dhdr) + -s "$cpiofile.gz", $ctx->digest;
