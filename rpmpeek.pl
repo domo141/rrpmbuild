@@ -270,7 +270,7 @@ readheader 0;
 # XXX --no-absolute-filenames is gnu cpio extension...
 my $cpiocmd = $extract?
   "(cd '$filesdir'; cpio -idv --no-absolute-filenames --quiet)":
-  'cpio -t --quiet';
+  'cpio -it --quiet';
 
 my %plfmtcmds = ( cpio => $cpiocmd );
 my %plcompcmds = ( gzip => 'gzip -dc',

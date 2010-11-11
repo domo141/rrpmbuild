@@ -515,20 +515,23 @@ foreach (@pkgnames)
     if ($^O eq 'msys') {
 	my (@flist, %flist);
 	foreach (@filelist) {
-	    push @flist, $_[4] if ($_->[1] < 0);
+	    push @flist, $_->[4] if ($_->[1] < 0);
 	}
-	xpIopen '', 'file', @flist;
-	while (<I>) {
-	    /(.*):\s+(.*)/;
-	    my $fn = $1;
-	    $flist{$fn} = 0755, next if $2 =~ /executable/;
-	    $flist{$fn} = 0644;
-	}
-	xpIclose;
-	foreach (@filelist) {
-	    if ($_->[1] < 0) {
-		my $perm = $flist{$_->[4]} or die "'$_->[4]' not found.\n";
-		$_->[1] = $perm;
+	if (@flist) {
+	    xpIopen '', 'file', @flist;
+	    while (<I>) {
+		chomp, warn("'$_': strange 'file' output line\n"), next
+		  unless /^([^:]*):\s+(.*)/;
+		my $fn = $1; $_ = $2;
+		$flist{$fn} = 0755, next if /executable/ or /directory/;
+		$flist{$fn} = 0644;
+	    }
+	    xpIclose;
+	    foreach (@filelist) {
+		if ($_->[1] < 0) {
+		    my $perm = $flist{$_->[4]} or die "'$_->[4]' not found.\n";
+		    $_->[1] = $perm;
+		}
 	    }
 	}
     }
