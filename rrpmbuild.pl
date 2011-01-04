@@ -645,6 +645,8 @@ foreach (@pkgnames)
 	_append(1039, 8, $count, join("\000", @unames) . "\000");
 	$count = scalar @gnames;
 	_append(1040, 8, $count, join("\000", @gnames) . "\000");
+        _append(1044, 6, 1, "$macros{name}-$macros{version}-src.rpm\000"); # Source RPM
+
 
 	if (defined $pre{$npkg}) {
 	    _append(1023, 6, 1, $pre{$npkg} . "\000");
