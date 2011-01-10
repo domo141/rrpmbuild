@@ -603,6 +603,32 @@ foreach (@pkgnames)
 	    $cdh_offset += length $_[3];
 	    warn 'Pushing data "', $_[3], '"', "\n" if $type == 6;
 	}
+        sub _fill_dep_tags($$$$)
+	{
+	    my ($depstring, $nametag, $flagtag, $versiontag) = @_;
+	    my (@depversion, @depflags, @depname);
+	    my @deps = split (/\s*,\s*/, $depstring);
+	    foreach (@deps) {
+		my ($name, $flag, $version) = split (/\s*([><]*[>=<])\s*/, $_);
+		push @depname, $name;
+		my $f;
+		if ($flag =~ /=/){
+		$f |= 0x08;
+	        }
+	        if ($flag =~ />/) {
+		    $f |= 0x04;
+	        }
+	        if ($flag =~ /</) {
+		    $f |= 0x02;
+	        }
+	        push @depflags, $f;
+	        push @depversion, $version;
+	    }
+            my $count = scalar @deps;
+	    _append($nametag, 8, $count, join("\000", @depname) . "\000"); #depsname
+	    _append($flagtag, 4, $count, pack "N" . $count, @depflags); #depflag
+	    _append($versiontag, 8, $count, join("\000", @depversion) . "\000"); #depsversion
+	}
 
 	_append(100, 6, 1, "C\000"); # hdri18n, atm
 
@@ -646,6 +672,12 @@ foreach (@pkgnames)
 	$count = scalar @gnames;
 	_append(1040, 8, $count, join("\000", @gnames) . "\000");
         _append(1044, 6, 1, "$macros{name}-$macros{version}-src.rpm\000"); # Source RPM
+        _fill_dep_tags($packages{$_[0]}->[1]->{requires}, 1049, 1048, 1050);
+        _fill_dep_tags($packages{$_[0]}->[1]->{provides}, 1047, 1112, 1113);
+	_append(1006, 4, 1, pack("N", time) ); # buldtime
+        use Net::Domain qw(hostname hostfqdn hostdomain);
+        my $host = hostname();
+        _append(1007, 6, 1, "$host\000"); # Source RPM
 
 
 	if (defined $pre{$npkg}) {
