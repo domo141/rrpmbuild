@@ -54,6 +54,7 @@ my %os_canon = ( Linux => 1 );
 # packages array defines order for packages + other hashes.
 my @pkgnames = ('');
 my %packages = ('', [ [ ], { } ] );
+my $building_src_pkg = 0;
 
 my (@prep, @build, @install, @clean);
 my (%description, %files);
@@ -86,6 +87,10 @@ sub init_macros()
 }
 
 my $instroot = 'rrpmbuild/instroot';
+if (!$building_src_pkg) 
+{
+	$instroot = '.';
+}
 my $instrlen = length $instroot;
 
 $ENV{'RPM_BUILD_ROOT'} = $instroot;
@@ -166,6 +171,12 @@ sub readspec()
 		      if $val =~ /\s/;
 		    $macros{$key} = $val
 		}
+		# build files for source package
+		if ($building_src_pkg && ($key =~ /source[0-9]+/ || 
+				$key =~ /patch[0-9]+/))
+		{
+			push @{ $files{''} }, $val;
+		}
 		next;
 	    }
 	    chomp;
@@ -217,7 +228,10 @@ sub readspec()
 	  unless /^\s*%(\w+)\s*(\S*?)\s*$/;
 
 	if ($1 eq 'package') {
-	    push @pkgnames, $2;
+		if (! $building_src_pkg) {
+			push @pkgnames, $2;
+		}
+ 		#we need to comsume the spec file even when building source package
 	    readpackage ($packages{$2} = [ [ ], { } ]);
 	}
 	elsif ($1 eq 'description') { readlines ($description{$2} = [ ]); }
@@ -227,7 +241,15 @@ sub readspec()
 	elsif ($1 eq 'install') { readlines \@install; }
 	elsif ($1 eq 'clean') {   readlines \@clean; }
 
-	elsif ($1 eq 'files') { readfiles ($files{$2} = [ ]); }
+	elsif ($1 eq 'files') { 
+        if ( $building_src_pkg) 
+		{
+			readfiles ([ ]); 
+		} else 
+		{
+			readfiles ($files{$2} = [ ]); 
+		}
+	}
 
 	elsif ($1 eq 'pre') { readlines2string $pre{$2}; }
 	elsif ($1 eq 'post') { readlines2string $post{$2}; }
@@ -241,8 +263,9 @@ sub readspec()
     };
 }
 
-die "Usage: $0 -bb <specfile>\n" unless @ARGV == 2 && $ARGV[0] eq '-bb';
+die "Usage: $0 -bb <specfile>\n" unless @ARGV == 2 && ($ARGV[0] eq '-bb' || $ARGV[0] eq '-bs');
 die "$ARGV[1]: not a file\n" unless -f $ARGV[1];
+$building_src_pkg = 1 if $ARGV[0] eq '-bs';
 
 my ($target_os, $target_arch) = split /\s+/, qx/uname -m -s/;
 my $os_canon = $os_canon{$target_os};
@@ -256,6 +279,9 @@ init_macros;
 open I, '<', $ARGV[1] or die;
 readspec;
 close I;
+if ($building_src_pkg) {
+	push @{ $files{''} }, "$ARGV[1]";
+}
 foreach (qw/name version release/) {
     die "Package $_ not known\n" unless (defined $macros{$_});
 }
@@ -290,9 +316,10 @@ sub execute_stage($$)
 
 #skip prep ## and fix...
 #execute_stage 'clean', join '', @clean;
-
-execute_stage 'build', join '', @build;
-execute_stage 'install', join '', @install;
+if (!$building_src_pkg) {
+	execute_stage 'build', join '', @build;
+	execute_stage 'install', join '', @install;
+}
 
 my ($ino, $cpio_dsize);
 sub open_cpio_file($)
@@ -434,7 +461,13 @@ foreach (@pkgnames)
     else {
 	$swname = "$macros{name}-$macros{version}";
     }
-    $pkgname = "$swname-$macros{release}.$target_arch";
+    if ($building_src_pkg)
+	{
+		$pkgname = "$swname-$macros{release}.src";
+	}
+	else {
+		$pkgname = "$swname-$macros{release}.$target_arch";
+	}
 
     my ($deffmode, $defdmode, $defuname, $defgname) = qw/-1 -1 root root/;
 
@@ -470,7 +503,11 @@ foreach (@pkgnames)
 	}
 
 	# XXX add check must start with / (and allow whitespaces (mayber)
-	addfile $1, $isdir if /^\s*\/+(\S+?)\/*\s+$/; # XXX no whitespace in filenames
+    if ($building_src_pkg) {
+		addfile $1, $isdir if /^\s*(\S+?)\/*\s*$/; # XXX no whitespace in filenames
+    } else {
+    	addfile $1, $isdir if /^\s*\/+(\S+?)\/*\s+$/; # XXX no whitespace in filenames
+	}
     }
 
     my (@files, @dirindexes, @dirs, %dirs, @modes, @sizes, @mtimes);
@@ -488,7 +525,7 @@ foreach (@pkgnames)
 	}
 
 	$_[0] =~ m%((.*/)?)(.+)% or die "'$_[0]': invalid path\n";
-	my ($dir, $base) = ('/' . $1, $3);
+	my ($dir, $base) = (($building_src_pkg?'':'/') . $1, $3);
 	my $di = $dirs{$dir};
 	unless (defined $di) {
 	    $di = $dirs{$dir} = scalar @dirs;
@@ -642,8 +679,10 @@ foreach (@pkgnames)
 	_append(1009, 4, 1, pack("N", $cpio_dsize) ); # size
 	_append(1014, 6, 1, "$packages{''}->[1]->{license}\000"); # license, atm
 	_append(1016, 6, 1, "$packages{$_[0]}->[1]->{group}\000"); # group, atm
-	_append(1021, 6, 1, "$target_os\000"); # os
-	_append(1022, 6, 1, "$target_arch\000"); # arch
+	if (!$building_src_pkg) {
+		_append(1021, 6, 1, "$target_os\000"); # os
+		_append(1022, 6, 1, "$target_arch\000"); # arch	
+	}
 	_append(1046, 4, 1, pack("N", -s $_[1]) ); # archivesize
 	_append(1124, 6, 1, "cpio\000"); # payloadfmt
 	_append(1125, 6, 1, "gzip\000"); # payloadcomp
@@ -671,9 +710,14 @@ foreach (@pkgnames)
 	_append(1039, 8, $count, join("\000", @unames) . "\000");
 	$count = scalar @gnames;
 	_append(1040, 8, $count, join("\000", @gnames) . "\000");
+    if ($building_src_pkg) {
+        _fill_dep_tags($packages{$_[0]}->[1]->{buildrequires}, 1049, 1048, 1050);
+    }
+	else {
         _append(1044, 6, 1, "$macros{name}-$macros{version}-src.rpm\000"); # Source RPM
         _fill_dep_tags($packages{$_[0]}->[1]->{requires}, 1049, 1048, 1050);
         _fill_dep_tags($packages{$_[0]}->[1]->{provides}, 1047, 1112, 1113);
+	}
 	_append(1006, 4, 1, pack("N", time) ); # buldtime
         use Net::Domain qw(hostname hostfqdn hostdomain);
         my $host = hostname();
@@ -720,7 +764,7 @@ foreach (@pkgnames)
 
     open STDOUT, '>', "$wdir.rpm" or die $!;
     my $leadname = substr "$swname-$macros{release}", 0, 65;
-    print pack 'NCCnnZ66nnZ16', 0xedabeedb, 3, 0, 0,
+    print pack 'NCCnnZ66nnZ16', 0xedabeedb, 3, 0, $building_src_pkg,
 	$os_canon, $leadname, $arch_canon, 5, "\0";
     print $shdr, $dhdr;
     system('/bin/cat' ,"$cpiofile.gz");
