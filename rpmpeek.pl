@@ -272,6 +272,14 @@ my $cpiocmd = $extract?
   "(cd '$filesdir'; cpio -idv --no-absolute-filenames --quiet)":
   'cpio -it --quiet';
 
+# Check if 'xcpio' is available at the same directory as this command.
+$_ = $0;
+s:/[^/]+$::;
+$_ = '.' if $_ eq $0;
+if (-x "$_/xcpio") {
+    $cpiocmd = $extract? "$_/xcpio -x -C '$filesdir'": "$_/xcpio -v";
+}
+
 my %plfmtcmds = ( cpio => $cpiocmd );
 my %plcompcmds = ( gzip => 'gzip -dc',
 		   bzip2 => 'bzip2 -dc' );
