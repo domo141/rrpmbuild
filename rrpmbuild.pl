@@ -80,7 +80,7 @@ while (@ARGV > 0) {
 	$building_src_pkg = 1;
 	next;
     }
-    if ($_ =~ '--rpmdir=(.*)') {
+    if ($_ =~ /--rpmdir=(.*)/) {
 	die "Rpmdir chosen already\n" if defined $rpmdir;
 	$rpmdir = $1;
 	next;
