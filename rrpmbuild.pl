@@ -54,12 +54,52 @@ my %os_canon = ( Linux => 1 );
 # packages array defines order for packages + other hashes.
 my @pkgnames = ('');
 my %packages = ('', [ [ ], { } ] );
-my $building_src_pkg = 0;
+
 
 my (@prep, @build, @install, @clean);
 my (%description, %files);
 my (%pre, %post, %preun, %postun);
 my @changelog;
+
+sub usage()
+{
+    die "Usage: $0 [--rpmdir=<dir>] (-bb|-bs) <specfile>\n";
+}
+
+my ($specfile, $building_src_pkg, $rpmdir);
+
+while (@ARGV > 0) {
+    $_ = shift @ARGV;
+    if ($_ eq '-bb') {
+	die "Build option chosen already\n" if defined $building_src_pkg;
+	$building_src_pkg = 0;
+	next;
+    }
+    if ($_ eq '-bs') {
+	die "Build option chosen already\n" if defined $building_src_pkg;
+	$building_src_pkg = 1;
+	next;
+    }
+    if ($_ =~ '--rpmdir=(.*)') {
+	die "Rpmdir chosen already\n" if defined $rpmdir;
+	$rpmdir = $1;
+	next;
+    }
+    if ($_ eq '--rpmdir') {
+	die "$0: option '--rpmdir' requires an argument\n" unless @ARGV > 0;
+	$rpmdir = shift @ARGV;
+	next;
+    }
+    $specfile = $_;
+    last;
+}
+
+usage unless defined $building_src_pkg;
+
+die "$0: missing specfile\n" unless defined $specfile;
+die "$0: too many arguments\n" if @ARGV > 0;
+
+$rpmdir = 'rrpmbuild' unless defined $rpmdir;
 
 my %macros;
 sub init_macros()
@@ -86,7 +126,7 @@ sub init_macros()
 		setup => 'echo no %prep' );
 }
 
-my $instroot = $building_src_pkg? '.': 'rrpmbuild/instroot';
+my $instroot = $building_src_pkg? '.': "$rpmdir/instroot";
 my $instrlen = length $instroot;
 
 $ENV{'RPM_BUILD_ROOT'} = $instroot;
@@ -254,10 +294,6 @@ sub readspec()
     };
 }
 
-die "Usage: $0 -bb <specfile>\n" unless @ARGV == 2 && ($ARGV[0] eq '-bb' || $ARGV[0] eq '-bs');
-die "$ARGV[1]: not a file\n" unless -f $ARGV[1];
-$building_src_pkg = 1 if $ARGV[0] eq '-bs';
-
 my ($target_os, $target_arch) = split /\s+/, qx/uname -m -s/;
 my $os_canon = $os_canon{$target_os};
 my $arch_canon = $arch_canon{$target_arch};
@@ -267,11 +303,11 @@ die "'$target_os': unknown os\n" unless defined $os_canon;
 die "'$target_arch': unknown arch\n" unless defined $arch_canon;
 
 init_macros;
-open I, '<', $ARGV[1] or die;
+open I, '<', $specfile or die "Cannot open '$specfile': $!\n";
 readspec;
 close I;
 
-push @{ $files{''} }, $ARGV[1] if $building_src_pkg;
+push @{ $files{''} }, $specfile if $building_src_pkg;
 
 foreach (qw/name version release/) {
     die "Package $_ not known\n" unless (defined $macros{$_});
@@ -572,7 +608,7 @@ foreach (@pkgnames)
 	}
     }
 
-    $wdir = 'rrpmbuild/' . $pkgname;
+    $wdir = $rpmdir . '/' . $pkgname;
 
     system ('/bin/rm', '-rf', $wdir);
     system ('/bin/mkdir', '-p', $wdir);
