@@ -86,6 +86,7 @@ while (@ARGV > 0) {
 	next;
     }
     if ($_ eq '--rpmdir') {
+	die "Rpmdir chosen already\n" if defined $rpmdir;
 	die "$0: option '--rpmdir' requires an argument\n" unless @ARGV > 0;
 	$rpmdir = shift @ARGV;
 	next;
