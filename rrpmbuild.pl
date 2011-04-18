@@ -47,7 +47,8 @@ use Digest::MD5;
 
 my %arch_canon = ( i686 => 1, i586 => 1, i486 => 1, i386 => 1, x86_64 => 1,
 		   armv3l => 12, armv4b => 12, armv4l => 12, armv5tel => 12,
-		   armv5tejl => 12, armv6l => 12, armv7l => 12, arm => 12 );
+		   armv5tejl => 12, armv6l => 12, armv7l => 12, armv7hl => 12,
+		   armv7nhl => 12, arm => 12 );
 
 my %os_canon = ( Linux => 1 );
 
