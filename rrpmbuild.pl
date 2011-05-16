@@ -64,10 +64,10 @@ my @changelog;
 
 sub usage()
 {
-    die "Usage: $0 [--rpmdir=<dir>] (-bb|-bs) <specfile>\n";
+    die "Usage: $0 [--rpmdir=<dir>] [--buildtime=secs] [--buildhost=hostname] (-bb|-bs) <specfile>\n";
 }
 
-my ($specfile, $building_src_pkg, $rpmdir);
+my ($specfile, $building_src_pkg, $rpmdir, $buildtime, $buildhost);
 
 while (@ARGV > 0) {
     $_ = shift @ARGV;
@@ -92,9 +92,34 @@ while (@ARGV > 0) {
 	$rpmdir = shift @ARGV;
 	next;
     }
+    if ($_ =~ /--buildtime=(.*)/) {
+	die "Buildtime chosen already\n" if defined $buildtime;
+	$buildtime = $1;
+	next;
+    }
+    if ($_ eq '--buildtime') {
+	die "Buildtime chosen already\n" if defined $buildtime;
+	die "$0: option '--buildtime' requires an argument\n" unless @ARGV > 0;
+	$buildtime = shift @ARGV;
+	next;
+    }
+    if ($_ =~ /--buildhost=(.*)/) {
+	die "Buildhost chosen already\n" if defined $buildhost;
+	$buildhost = $1;
+	next;
+    }
+    if ($_ eq '--buildhost') {
+	die "Buildhost chosen already\n" if defined $buildhost;
+	die "$0: option '--buildhost' requires an argument\n" unless @ARGV > 0;
+	$buildhost = shift @ARGV;
+	next;
+    }
     $specfile = $_;
     last;
 }
+$buildtime = time unless defined $buildtime;
+use Net::Domain ();
+$buildhost = Net::Domain::hostname unless defined $buildhost;
 
 usage unless defined $building_src_pkg;
 
@@ -746,10 +771,8 @@ foreach (@pkgnames)
 	    _fill_dep_tags($packages{$_[0]}->[1]->{requires}, 1049, 1048, 1050);
 	    _fill_dep_tags("$macros{name}=$macros{version}-$macros{release},$packages{$_[0]}->[1]->{provides}", 1047, 1112, 1113);
 	}
-	_append(1006, 4, 1, pack("N", time) ); # buldtime
-        use Net::Domain qw(hostname hostfqdn hostdomain);
-        my $host = hostname();
-        _append(1007, 6, 1, "$host\000"); # buildhost
+	_append(1006, 4, 1, pack("N", $buildtime) ); # buldtime
+        _append(1007, 6, 1, "$buildhost\000"); # buildhost
 
 
 	if (defined $pre{$npkg}) {
