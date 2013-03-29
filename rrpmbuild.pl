@@ -459,11 +459,11 @@ foreach (@pkgnames)
 {
     # Declare variables, to be dynamically scoped using local below.
     our ($fmode, $dmode, $uname, $gname, $havedoc);
-    our ($wdir, $pkgname, $swname, $npkg, $xxxname, @filelist);
+    our ($wdir, $pkgname, $swname, $npkg, $rpmname, @filelist);
 
     # Use local instead of my -- the failure w/ my is a small mystery to me.
     local ($fmode, $dmode, $uname, $gname, $havedoc);
-    local ($wdir, $pkgname, $swname, $npkg, $xxxname, @filelist);
+    local ($wdir, $pkgname, $swname, $npkg, $rpmname, @filelist);
 
     #warn 'XXXX 1 ', \@filelist, "\n"; # see also XXXX 2 & XXXX 3
 
@@ -517,18 +517,21 @@ foreach (@pkgnames)
     }
 
     $npkg = $_;
-    if (length $_) {
-	$swname = "$macros{name}-$npkg-$macros{version}";
+    if (length $npkg) {
+	$rpmname = "$macros{name}-$npkg";
     }
     else {
-	$swname = "$macros{name}-$macros{version}";
+	$rpmname = $macros{name};
     }
+    $swname = "$rpmname-$macros{version}";
     if ($building_src_pkg) {
 	$pkgname = "$swname-$macros{release}.src";
     }
     else {
 	$pkgname = "$swname-$macros{release}.$target_arch";
     }
+
+    warn "Creating package $pkgname.rpm\n";
 
     my ($deffmode, $defdmode, $defuname, $defgname) = qw/-1 -1 root root/;
 
@@ -614,7 +617,6 @@ foreach (@pkgnames)
 
     # Do permission check in separate loop as linux/windows functionality
     # differs when checking permissions from filesystem.
-
     # Cygwin can(?) handle permissions, Native w32/64 not supported ATM.
     if ($^O eq 'msys') {
 	my (@flist, %flist);
@@ -738,7 +740,7 @@ foreach (@pkgnames)
 
 	_append(100, 6, 1, "C\000"); # hdri18n, atm
 
-	_append(1000, 6, 1, "$macros{name}\000"); # name
+	_append(1000, 6, 1, "$rpmname\000"); # name
 	_append(1001, 6, 1, "$macros{version}\000"); # version
 	_append(1002, 6, 1, "$macros{release}\000"); # release
 	_append(1004, 9, 1, "$packages{$_[0]}->[1]->{summary}\000"); # summary, atm
