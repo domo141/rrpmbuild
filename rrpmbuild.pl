@@ -371,6 +371,7 @@ sub execute_stage($$)
 #execute_stage 'clean', join '', @clean;
 if (! $building_src_pkg) {
     execute_stage 'build', join '', @build;
+    mkdir $rpmdir;
     execute_stage 'install', join '', @install;
 }
 
