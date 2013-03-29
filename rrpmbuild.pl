@@ -718,6 +718,7 @@ foreach (@pkgnames)
 	    my @deps = split (/\s*,\s*/, $depstring);
 	    foreach (@deps) {
 		my ($name, $flag, $version) = split (/\s*([><]*[>=<])\s*/, $_);
+		next unless defined $version;
 		push @depname, $name;
 		my $f;
 		if ($flag =~ /=/){
@@ -786,7 +787,8 @@ foreach (@pkgnames)
 	else {
 	    _append(1044, 6, 1, "$macros{name}-$macros{version}-src.rpm\000"); # Source RPM
 	    _fill_dep_tags($packages{$_[0]}->[1]->{requires}, 1049, 1048, 1050);
-	    _fill_dep_tags("$macros{name}=$macros{version}-$macros{release},$packages{$_[0]}->[1]->{provides}", 1047, 1112, 1113);
+	    my $p = $packages{$_[0]}->[1]->{provides} || '';
+	    _fill_dep_tags("$rpmname=$macros{version}-$macros{release},$p", 1047, 1112, 1113);
 	}
 	_append(1006, 4, 1, pack("N", $buildtime) ); # buldtime
 	_append(1007, 6, 1, "$buildhost\000"); # buildhost
