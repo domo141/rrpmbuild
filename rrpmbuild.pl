@@ -1,11 +1,10 @@
 #!/usr/bin/perl
-# -*- cperl -*-
+#-*- mode: cperl; cperl-indent-level: 4; cperl-continued-brace-offset: -2 -*-
 
 # This file is part of MADDE
 #
 # Copyright (C) 2010 Nokia Corporation and/or its subsidiary(-ies).
-#
-# Contact: Juha Riihimäki <juha.riihimaki@nokia.com>
+# Copyright (C) 2013 Tomi Ollila <tomi.ollila@iki.fi>
 #
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -198,7 +197,7 @@ sub readspec()
 	}
 
 	#    s/%%/\001/g;
-	# dont be too picky if var is in format %{foo or $foo} ;) (i.e fix ltr)
+	# dont be too picky if var is in format %{foo or %foo} ;) (i.e fix ltr)
 	$m =~ s/%\{?(%|[\w\?\!]+)\}?/_eval_it/ge;
 	#    s/\001/%/g;
 	return $m . '#' . $rest if (defined $rest);
