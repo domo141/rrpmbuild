@@ -456,8 +456,15 @@ sub xpIclose()
 # fill arrays, make cpio
 foreach (@pkgnames)
 {
-    my ($fmode, $dmode, $uname, $gname, $havedoc);
-    my ($wdir, $pkgname, $swname, $npkg, @filelist);
+    # Declare variables, to be dynamically scoped using local below.
+    our ($fmode, $dmode, $uname, $gname, $havedoc);
+    our ($wdir, $pkgname, $swname, $npkg, $xxxname, @filelist);
+
+    # Use local instead of my -- the failure w/ my is a small mystery to me.
+    local ($fmode, $dmode, $uname, $gname, $havedoc);
+    local ($wdir, $pkgname, $swname, $npkg, $xxxname, @filelist);
+
+    #warn 'XXXX 1 ', \@filelist, "\n"; # see also XXXX 2 & XXXX 3
 
     sub addocfile($) {
 	#if (/\*/)...
@@ -494,6 +501,7 @@ foreach (@pkgnames)
 	warn "Adding file $_[0]\n";
 	push @filelist,
 	  [ $_[0], $fmode, $uname, $gname, "$instroot/$_[0]" ];
+	#warn 'XXXX 2 ', \@filelist, ' ', "@filelist", "\n";
     }
     sub addfile($$) # file, isdir
     {
@@ -563,8 +571,11 @@ foreach (@pkgnames)
 	}
     }
 
-    my (@files, @dirindexes, @dirs, %dirs, @modes, @sizes, @mtimes);
-    my (@unames, @gnames, @md5sums);
+    # Ditto.
+    our (@files, @dirindexes, @dirs, %dirs, @modes, @sizes, @mtimes);
+    our (@unames, @gnames, @md5sums);
+    local (@files, @dirindexes, @dirs, %dirs, @modes, @sizes, @mtimes);
+    local (@unames, @gnames, @md5sums);
     sub add2lists($$$$$$$)
     {
 	sub getmd5sum($)
@@ -597,6 +608,8 @@ foreach (@pkgnames)
 	}
 	else { push @md5sums, ''; }
     }
+
+    #warn 'XXXX 3 ', \@filelist, ' ', "@filelist", "\n";
 
     # Do permission check in separate loop as linux/windows functionality
     # differs when checking permissions from filesystem.
