@@ -8,12 +8,13 @@ use warnings;
 
 $" = ', ';
 
-my $extract = 0;
+my ($extract, $cfv) = (0, '');
 if (defined $ARGV[0]) {
     $extract = 1, shift @ARGV if $ARGV[0] eq '-x';
+    $cfv = 'v', shift @ARGV if $ARGV[0] eq '-v';
 }
 
-die "Usage: $0 [-x] file.rpm\n" unless defined $ARGV[0];
+die "Usage: $0 [-(x|v)] file.rpm\n" unless defined $ARGV[0];
 
 open I, '<', $ARGV[0] or die "Cannot open '$ARGV[0]': $!.\n";
 
@@ -270,14 +271,14 @@ readheader 0;
 # XXX --no-absolute-filenames is gnu cpio extension...
 my $cpiocmd = $extract?
   "(cd '$filesdir'; cpio -idv --no-absolute-filenames --quiet)":
-  'cpio -it --quiet';
+  "cpio -it$cfv --quiet";
 
 # Check if 'xcpio' is available at the same directory as this command.
 $_ = $0;
 s:/[^/]+$::;
 $_ = '.' if $_ eq $0;
 if (-x "$_/xcpio") {
-    $cpiocmd = $extract? "$_/xcpio -x -C '$filesdir'": "$_/xcpio -v";
+    $cpiocmd = $extract? "$_/xcpio -x -C '$filesdir'": "$_/xcpio -$cfv";
 }
 
 my %plfmtcmds = ( cpio => $cpiocmd );
