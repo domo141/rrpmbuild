@@ -536,7 +536,7 @@ foreach (@pkgnames)
     my ($deffmode, $defdmode, $defuname, $defgname) = qw/-1 -1 root root/;
 
     LINE: foreach (@{$files{$npkg}}) {
-	($fmode, $dmode, $uname, $gname) = ($deffmode,$defdmode,$defuname,$defgname);
+	($fmode, $dmode, $uname, $gname) = ($deffmode, $defdmode, $defuname, $defgname);
 	my ($isdir, $isconfig, $isdoc) = (0, 0, 0);
 	while (1) {
 	    if (s/\001(def)?attr\001\((.+?)\)//) {
@@ -545,11 +545,12 @@ foreach (@pkgnames)
 		$fmode = $attrs[0] if defined $attrs[0];
 		$uname = $attrs[1] if defined $attrs[1];
 		$gname = $attrs[2] if defined $attrs[2];
-		$dmode = $attrs[3] if defined $attrs[3];
+		my $ndmode;
+		$ndmode = $attrs[3] if defined $attrs[3];
 		# XXX should check that are numeric and in right range.
 		$fmode = $fmode eq '-'? -1: oct $fmode;
-		$dmode = $dmode eq '-'? -1: oct $dmode;
-		($deffmode,$defdmode,$defuname,$defgname)
+		$dmode = ($ndmode eq '-'? -1: oct $ndmode) if defined $ndmode;
+		($deffmode, $defdmode, $defuname, $defgname)
 		  = ($fmode, $dmode, $uname, $gname) if defined $1;
 		next;
 	    }
