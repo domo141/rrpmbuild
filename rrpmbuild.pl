@@ -711,6 +711,7 @@ foreach (@pkgnames)
 	}
 	sub _fill_dep_tags($$$$)
 	{
+	    return unless defined $_[0]; # depstring
 	    my ($depstring, $nametag, $flagtag, $versiontag) = @_;
 	    my (@depversion, @depflags, @depname);
 	    my @deps = split (/\s*,\s*/, $depstring);
