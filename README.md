@@ -18,6 +18,13 @@ rpmpeek
 
 A tool to view (and extract) rpm package structure and files.
 
+mkpkgs.sh
+---------
+
+This script creates rpm and deb packages of rrpmbuild. For cross-platform
+executability deb-package is created "by hand" (in fraction of a decisecond!)
+and additionally to dogfood rrpmbuild rpm package is created by
+`rrpmbuild.pl` itself (in second fraction of a decisecond)!
 
 Initial import
 ==============
