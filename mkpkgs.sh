@@ -16,7 +16,7 @@ case ~ in '~') exec >&2; echo
 esac
 
 case ${BASH_VERSION-} in *.*) shopt -s xpg_echo; esac
-case ${ZSH_VERSION-} in *.*) setopt shwordsplit; esac
+case ${ZSH_VERSION-} in *.*) emulate ksh; esac
 
 die () { echo "$@" >&2; exit 1; }
 
