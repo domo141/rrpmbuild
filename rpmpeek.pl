@@ -64,9 +64,11 @@ sub readlead()
 readlead;
 
 my %knownhdrs_pri = ( 62 => 'HDRSIG', 63 => 'HDRIMM', 100 => 'HDRI18N',
-		      267 => 'DSA', 268 => 'RSA', 269 => 'SHA1' );
+		      267 => 'DSA', 268 => 'RSA',
+		      269 => 'SHA1', 273 => 'SHA256' ); # Sha(1|256)header!
 my %knownhdrs_sig = ( 1000 => 'SIZE', 1002 => 'PGP', 1004 => 'MD5',
-		      1006 => 'PGP', 1007 => 'PLSIZE' );
+		      1006 => 'PGP', 1007 => 'PLSIZE',
+		      1008 => 'RESERVEDSPACE');
 my %knownhdrs_hdr = (
     1000 => 'NAME', 1001 => 'VERSION', 1002 => 'RELEASE',
     1003 => 'EPOCH', 1004 => 'SUMMARY', 1005 => 'DESCRIPTION',
