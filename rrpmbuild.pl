@@ -4,7 +4,7 @@
 # This file is part of MADDE
 #
 # Copyright (C) 2010 Nokia Corporation and/or its subsidiary(-ies).
-# Copyright (C) 2013 Tomi Ollila <tomi.ollila@iki.fi>
+# Copyright (C) 2013-2024 Tomi Ollila <tomi.ollila@iki.fi>
 #
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public License
@@ -28,7 +28,7 @@ use File::Find;
 
 use Digest::MD5;
 
-# SO far, this is proof-of-concept implementation (read: terrible hack).
+# So far, this is proof-of-concept implementation (read: terrible hack).
 # Even some mentioned features do not work... and tested only on linux
 # with perl 5.10.x // 2010-06-10 too
 
@@ -42,12 +42,13 @@ use Digest::MD5;
 # bottom line: the spec files that rrpmbuild can build, are also buildable
 # with standard rpm, but not wise versa.
 
-# from rpm-4.8.0/rpmrc.in
+# from rpm-4.8.0/rpmrc.in (aarch64 from pm-4.19.1.1/rpmrc.in)
 
-my %arch_canon = ( i686 => 1, i586 => 1, i486 => 1, i386 => 1, x86_64 => 1,
+my %arch_canon = ( noarch => 1, # rpmpeek()ed!
+		   i686 => 1, i586 => 1, i486 => 1, i386 => 1, x86_64 => 1,
 		   armv3l => 12, armv4b => 12, armv4l => 12, armv5tel => 12,
 		   armv5tejl => 12, armv6l => 12, armv7l => 12, armv7hl => 12,
-		   armv7nhl => 12, arm => 12 );
+		   armv7nhl => 12, arm => 12, aarch64 => 19 );
 
 my %os_canon = ( Linux => 1 );
 
@@ -63,7 +64,7 @@ my @changelog;
 
 sub usage()
 {
-    die "Usage: $0 [--rpmdir=<dir>] [--buildtime=secs] [--buildhost=hostname] (-bb|-bs) <specfile>\n";
+    die "Usage: $0 [--rpmdir=DIR] [--buildtime=SECS] [--buildhost=HOSTNAME] (-bb|-bs) SPECFILE\n";
 }
 
 my ($specfile, $building_src_pkg, $rpmdir, $buildtime, $buildhost);
@@ -320,14 +321,6 @@ sub readspec()
     };
 }
 
-my ($target_os, $target_arch) = split /\s+/, qx/uname -m -s/;
-my $os_canon = $os_canon{$target_os};
-my $arch_canon = $arch_canon{$target_arch};
-
-# XXX should ignore for noarch.. (maybe) so check later...
-die "'$target_os': unknown os\n" unless defined $os_canon;
-die "'$target_arch': unknown arch\n" unless defined $arch_canon;
-
 init_macros;
 open I, '<', $specfile or die "Cannot open '$specfile': $!\n";
 readspec;
@@ -340,10 +333,19 @@ foreach (qw/name version release/) {
 }
 #rest_macros; # moved above for now. smarter variable expansion coming later.
 
-# XXX check what must be in "sub" packages
-foreach (qw/license summary group/) {
+# XXX check what must be in "sub" packages (hmm maeby out-of-scope)
+foreach (qw/license summary buildarch/) {
     die "Package $_ not known\n" unless (defined $packages{''}->[1]->{$_});
 }
+
+# XXX expect user to know how to cross-compile if that is the case
+#my ($target_os, $target_arch) = split /\s+/, qx/uname -m -s/;
+my ($target_os, $target_arch) = ('Linux', $packages{''}->[1]->{buildarch});
+my $os_canon = $os_canon{$target_os};
+my $arch_canon = $arch_canon{$target_arch};
+
+die "'$target_os': unknown os\n" unless defined $os_canon;
+die "'$target_arch': unknown arch\n" unless defined $arch_canon;
 
 
 # check that we have description and files for all packages
@@ -360,7 +362,7 @@ foreach (@pkgnames) {
 sub execute_stage($$)
 {
     print "Executing: %$_[0]\n";
-    system('/bin/sh', '-exc', $_[1]);
+    system('/bin/sh', '-euxc', $_[1]);
     if ($?) {
 	my $ev = $? >> 8;
 	die "$_[0] exited with nonzero exit code ($ev)\n";
@@ -718,8 +720,12 @@ foreach (@pkgnames)
 	    my @deps = split (/\s*,\s*/, $depstring);
 	    foreach (@deps) {
 		my ($name, $flag, $version) = split (/\s*([><]*[>=<])\s*/, $_);
-		next unless defined $version;
 		push @depname, $name;
+		unless (defined $version) {
+		    push @depflags, 0;
+		    push @depversion, '';
+		    next
+		}
 		my $f;
 		if ($flag =~ /=/){
 		$f |= 0x08;
@@ -752,12 +758,13 @@ foreach (@pkgnames)
 	_append(1005, 6, 1, "$description\000"); # descrip, atm
 	_append(1009, 4, 1, pack("N", $cpio_dsize) ); # size
 	_append(1014, 6, 1, "$packages{''}->[1]->{license}\000"); # license, atm
-	_append(1016, 6, 1, "$packages{$_[0]}->[1]->{group}\000"); # group, atm
+	my $group = $packages{$_[0]}->[1]->{group} // 'unspecified';
+	_append(1016, 6, 1, "$group\000");
 	if (! $building_src_pkg) {
 	    _append(1021, 6, 1, "$target_os\000"); # os
 	    _append(1022, 6, 1, "$target_arch\000"); # arch
 	}
-	_append(1046, 4, 1, pack("N", -s $_[1]) ); # archivesize
+	#_append(1046, 4, 1, pack("N", -s $_[1]) ); # archivesize ("invalid" v4)
 	_append(1124, 6, 1, "cpio\000"); # payloadfmt
 	_append(1125, 6, 1, "gzip\000"); # payloadcomp
 
@@ -785,12 +792,13 @@ foreach (@pkgnames)
 	    _fill_dep_tags($packages{$_[0]}->[1]->{buildrequires}, 1049, 1048, 1050);
 	}
 	else {
-	    _append(1044, 6, 1, "$macros{name}-$macros{version}-src.rpm\000"); # Source RPM
+	    # source rpm, if there were any...(outcommented now, may get back?)
+	    #_append(1044, 6, 1, "$macros{name}-$macros{version}-src.rpm\000");
 	    _fill_dep_tags($packages{$_[0]}->[1]->{requires}, 1049, 1048, 1050);
 	    my $p = $packages{$_[0]}->[1]->{provides} || '';
 	    _fill_dep_tags("$rpmname=$macros{version}-$macros{release},$p", 1047, 1112, 1113);
 	}
-	_append(1006, 4, 1, pack("N", $buildtime) ); # buldtime
+	_append(1006, 4, 1, pack("N", $buildtime) ); # buildtime
 	_append(1007, 6, 1, "$buildhost\000"); # buildhost
 
 
