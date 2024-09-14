@@ -235,7 +235,7 @@ sub readheader($)
     my ($magic, $res, $entries, $size);
     ($magic, $res, $entries, $size) = unpack('NNNN', $data);
 
-    die "'$magic': unknown magic\n" unless $magic == 0x8eade801;
+    die "'$magic': unknown magic (at $toff)\n" unless $magic == 0x8eade801;
 
     printf "\nHeader (at %d): magic %x res %d entries %d (%d bytes) size %d\n",
 	$toff, $magic, $res, $entries, ($entries + 1) * 16, $size;

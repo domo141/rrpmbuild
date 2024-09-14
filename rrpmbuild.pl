@@ -26,7 +26,7 @@ use warnings;
 use Fcntl ':mode';
 use File::Find;
 
-use Digest::MD5;
+use Digest;
 
 # So far, this is proof-of-concept implementation (read: terrible hack).
 # Even some mentioned features do not work... and tested only on linux
@@ -92,17 +92,6 @@ while (@ARGV > 0) {
 	$rpmdir = shift @ARGV;
 	next;
     }
-    if ($_ =~ /--buildtime=(.*)/) {
-	die "Buildtime chosen already\n" if defined $buildtime;
-	$buildtime = $1;
-	next;
-    }
-    if ($_ eq '--buildtime') {
-	die "Buildtime chosen already\n" if defined $buildtime;
-	die "$0: option '--buildtime' requires an argument\n" unless @ARGV > 0;
-	$buildtime = shift @ARGV;
-	next;
-    }
     if ($_ =~ /--buildhost=(.*)/) {
 	die "Buildhost chosen already\n" if defined $buildhost;
 	$buildhost = $1;
@@ -117,7 +106,10 @@ while (@ARGV > 0) {
     $specfile = $_;
     last;
 }
-$buildtime = time unless defined $buildtime;
+
+my $sde = $ENV{SOURCE_DATE_EPOCH} // '';
+$buildtime = ($sde ne '')? $sde + 0: time;
+
 use Net::Domain ();
 $buildhost = Net::Domain::hostname unless defined $buildhost;
 
@@ -393,7 +385,7 @@ sub file_to_cpio($$$)
 
     if (defined $file) {
 	my @sb = stat $file or die "stat '$file': $!\n";
-	$mtime = $sb[9];
+	$mtime = ($sde eq '')? $sb[9]: $buildtime;
 	if (S_ISDIR($sb[2])) {
 	    $size = 0; $mode += 0040000; $nlink = 2;
 	}
@@ -587,7 +579,7 @@ foreach (@pkgnames)
     {
 	sub getmd5sum($)
 	{
-	    my $ctx = Digest::MD5->new;
+	    my $ctx = Digest->new('MD5');
 	    #XXX warn $_[0];
 	    open J, '<', $_[0] or die $!;
 	    $ctx->addfile(*J);
@@ -666,52 +658,49 @@ foreach (@pkgnames)
     }
     close_cpio_file;
 
-    sub createsigheader($$)
+    my (@cdh_index, @cdh_data, $cdh_offset, $cdh_extras);
+    sub _append($$$$)
     {
-	# all hardcoded (use _append later, when proof-of-concept ready)
-	my @hdr;
+	my ($tag, $type, $count, $data) = @_;
 
-	push @hdr, pack("CCCCNNN", 0x8e, 0xad, 0xe8, 0x01, 0, 2, 20);
-	#push @hdr, pack("CCCCNNN", 0x8e, 0xad, 0xe8, 0x01, 0, 3, 36);
-	#push @hdr, pack("NNNN", 62, 7, 20, 16); # HDRSIG
-	push @hdr, pack("NNNN", 1000, 4, 0, 1); # SIZE
-	push @hdr, pack("NNNN", 1004, 7, 4, 16); # MD5
+	if ($type == 3) { # int16, align by 2
+	    $cdh_extras++, $cdh_offset++, push @cdh_data, "\000"
+	      if ($cdh_offset & 1);
+	}
+	elsif ($type == 4) { # int32, align by 4
+	    if ($cdh_offset & 3) {
+		my $pad = 4 - ($cdh_offset & 3);
+		$cdh_extras++;
+		$cdh_offset += $pad, push @cdh_data, "\000" x $pad;
+	    }
+	}
+	elsif ($type == 5) {die "type 5: int64 not handled"} #int64 align by 8
 
-	#push @hdr, pack("N", $_[0]); # add SIZE;
-	push @hdr, pack("N", $_[0] - 32); # add SIZE; # XXX -32 !!!
-	push @hdr, $_[1]; # add digest
-	#push @hdr, pack("CCCCCCCCCCCCCCCC", 0x00, 0x00, 0x00, 0x3e, 0x00, 0x00,
-	#		0x00, 0x07, 0xff, 0xff, 0xff, 0xb0, 0x00, 0x00, 0x00, 0x10);
-	return join('', @hdr) . "\0" x 4; # with align
+	push @cdh_index, pack("NNNN", $tag, $type, $cdh_offset, $count);
+	push @cdh_data, $_[3];
+	$cdh_offset += length $_[3];
+	warn 'Pushing data "', $_[3], '"', "\n" if $type == 6;
     }
 
-    my (@cdh_index, @cdh_data, $cdh_offset, $cdh_extras);
+    sub createsigheader($$$$)
+    {
+	@cdh_index = (); @cdh_data = (); $cdh_offset = 0; $cdh_extras = 0;
+
+	_append(1000, 4, 1, pack("N", $_[0] - 32)); # SIZE # XXX -32 !!!
+	_append(1004, 7, 16, $_[1]);        # MD5
+	#_append(269, 6, 1, $_[2] . "\000"); # SHA1
+	#_append(273, 6, 1, $_[3] . "\000"); # SHA256
+
+	my $header = join '', @cdh_data;
+	my ($ixlen, $dlen) = (scalar @cdh_data - $cdh_extras, length $header);
+	my $hdrhdr = pack "CCCCNNN", 0x8e, 0xad, 0xe8, 0x01, 0, $ixlen, $dlen;
+	my $pad = $dlen % 8; $pad = 8 - $pad if $pad != 0;
+	return $hdrhdr . join('', @cdh_index) . $header . "\0" x $pad;
+    }
 
     sub createdataheader($$) # npkg, cpiofile
     {
 	@cdh_index = (); @cdh_data = (); $cdh_offset = 0; $cdh_extras = 0;
-	sub _append($$$$)
-	{
-	    my ($tag, $type, $count, $data) = @_;
-
-	    if ($type == 3) { # int16, align by 2
-		$cdh_extras++, $cdh_offset++, push @cdh_data, "\000"
-		  if ($cdh_offset & 1);
-	    }
-	    elsif ($type == 4) { # int32, align by 4
-		if ($cdh_offset & 3) {
-		    my $pad = 4 - ($cdh_offset & 3);
-		    $cdh_extras++;
-		    $cdh_offset += $pad, push @cdh_data, "\000" x $pad;
-		}
-	    }
-	    # elif $type == 5) #int64 align by 8...
-
-	    push @cdh_index, pack("NNNN", $tag, $type, $cdh_offset, $count);
-	    push @cdh_data, $_[3];
-	    $cdh_offset += length $_[3];
-	    warn 'Pushing data "', $_[3], '"', "\n" if $type == 6;
-	}
 	sub _fill_dep_tags($$$$)
 	{
 	    return unless defined $_[0]; # depstring
@@ -832,14 +821,18 @@ foreach (@pkgnames)
 
     my $dhdr = createdataheader $npkg, $cpiofile;
     system 'gzip', '-n', $cpiofile;
-    my $ctx = Digest::MD5->new();
-    $ctx->add($dhdr);
-    #system "md5sum $cpiofile.gz >/dev/tty";
-    open J, "$cpiofile.gz" or die $!;
-    $ctx->addfile(*J);
-    close J;
-    my $shdr = createsigheader length($dhdr) + -s "$cpiofile.gz", $ctx->digest;
-
+    my $ctx;
+    $ctx = Digest->new('MD5'); $ctx->add($dhdr);
+    open J, "$cpiofile.gz" or die $!; $ctx->addfile(*J); close J;
+    my $md5 = $ctx->digest;
+    $ctx = Digest->new('SHA-1'); $ctx->add($dhdr);
+    open J, "$cpiofile.gz" or die $!; $ctx->addfile(*J); close J;
+    my $sha1 = $ctx->hexdigest;
+    $ctx = Digest->new('SHA-256'); $ctx->add($dhdr);
+    open J, "$cpiofile.gz" or die $!; $ctx->addfile(*J); close J;
+    my $sha256 = $ctx->hexdigest;
+    my $shdr = createsigheader length($dhdr) + -s "$cpiofile.gz",
+                               $md5, $sha1, $sha256;
     open STDOUT, '>', "$wdir.rpm" or die $!;
     my $leadname = substr "$swname-$macros{release}", 0, 65;
     print pack 'NCCnnZ66nnZ16', 0xedabeedb, 3, 0, $building_src_pkg,
