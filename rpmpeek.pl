@@ -37,7 +37,11 @@ my ($data, $tlen, $toff) = ('', 0, 0);
 sub readdata($)
 {
     my $len = read I, $data, $_[0];
-    die "$len != $_[0]\n" unless $len == $_[0];
+    no warnings;
+    unless ($len == $_[0]) {
+	die "failed to read: $!\n" unless defined $len;
+	die "short read: $len != $_[0]\n";
+    }
     $toff = $tlen;
     $tlen += $len;
 }
@@ -144,7 +148,8 @@ my %knownhdrs_hdr = (
     5010 => 'FILECAPS', 5011 => 'FILEDIGESTALGO', 5012 => 'BUGURL',
     5013 => 'EVR', 5014 => 'NVR', 5015 => 'NEVR', 5016 => 'NEVRA',
     5017 => 'HEADERCOLOR', 5018 => 'VERBOSE', 5019 => 'EPOCHNUM',
-    5062 => 'ENCODING', 5092 => 'PAYLOADDIGEST', 5093 => 'PAYLOADDIGESTALGO'
+    5062 => 'ENCODING', 5092 => 'PAYLOADDIGEST', 5093 => 'PAYLOADDIGESTALGO',
+    5097 => 'PAYLOADDIGESTALT'
 );
 
 sub tagstr($$)
