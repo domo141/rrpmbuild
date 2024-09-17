@@ -33,18 +33,19 @@ use Digest;
 # with perl 5.10.x // 2010-06-10 too
 
 # Welcome to the source of 'restricted' rpmbuild. The 'restrictions' are:
-#  we do not recurse! (some is easy to add (and even full recursion)
+#  does not check things that "real" rpm does (e.g. no binaries in noarch pkg)
+#  does not recurse! (some is easy to add (and even full recursion))
 #  no fancy variables
-#  a se if %macros just not supported
-#  only binary rpms (so far)
-#  only -bb now, more -b -optios later. some --:s too...
+#  a set of %macros just not supported
+#  only binary rpms (-bs probably does not work too well...)
+#  only -bb now, more -b -options later (if ever). some --:s too...
 
-# bottom line: the spec files that rrpmbuild can build, are also buildable
-# with standard rpm, but not wise versa.
+# bottom line: the spec files that rrpmbuild can build, may also be buildable
+# with standard rpm, but not necessarily wise versa.
 
-# from rpm-4.8.0/rpmrc.in (aarch64 from pm-4.19.1.1/rpmrc.in)
+# from rpm-4.8.0/rpmrc.in (aarch64 from rpm-4.19.1.1/rpmrc.in)
 
-my %arch_canon = ( noarch => 1, # rpmpeek()ed!
+my %arch_canon = ( noarch => 1, # rpmpeek()ed (hmm some have 1, some 255 :O)
 		   i686 => 1, i586 => 1, i486 => 1, i386 => 1, x86_64 => 1,
 		   armv3l => 12, armv4b => 12, armv4l => 12, armv5tel => 12,
 		   armv5tejl => 12, armv6l => 12, armv7l => 12, armv7hl => 12,
@@ -561,7 +562,7 @@ foreach (@pkgnames)
 	    last;
 	}
 
-	# XXX add check must start with / (and allow whitespaces (mayber)
+	# XXX add check must start with / (and allow whitespaces (maybe))
 	if ($building_src_pkg) {
 	    addfile $1, $isdir if /^\s*(\S+?)\/*\s*$/; # XXX no whitespace in filenames
 	}
@@ -580,7 +581,6 @@ foreach (@pkgnames)
 	sub getmd5sum($)
 	{
 	    my $ctx = Digest->new('MD5');
-	    #XXX warn $_[0];
 	    open J, '<', $_[0] or die $!;
 	    $ctx->addfile(*J);
 	    close J;
@@ -652,16 +652,20 @@ foreach (@pkgnames)
 
     my $cpiofile = $wdir . '/cpio';
     open_cpio_file $cpiofile;
+    my $sizet = 0;
     foreach (sort { $a->[0] cmp $b->[0] } @filelist) {
 	my ($mode, $size, $mtime) = file_to_cpio($_->[0], $_->[1], $_->[4]);
 	add2lists($_->[0], $mode, $size, $mtime, $_->[2], $_->[3], $_->[4]);
+	$sizet += $size;
     }
     close_cpio_file;
 
-    my (@cdh_index, @cdh_data, $cdh_offset, $cdh_extras);
+    my (@cdh_index, @cdh_data, $cdh_offset, $cdh_extras, $ptag);
     sub _append($$$$)
     {
 	my ($tag, $type, $count, $data) = @_;
+
+	die "$ptag >= $tag" if $ptag >= $tag and $tag > 99; $ptag = $tag;
 
 	if ($type == 3) { # int16, align by 2
 	    $cdh_extras++, $cdh_offset++, push @cdh_data, "\000"
@@ -682,31 +686,38 @@ foreach (@pkgnames)
 	warn 'Pushing data "', $_[3], '"', "\n" if $type == 6;
     }
 
-    sub createsigheader($$$$)
+    sub createsigheader($$$$$)
     {
-	@cdh_index = (); @cdh_data = (); $cdh_offset = 0; $cdh_extras = 0;
+	@cdh_index = (); @cdh_data = (); $cdh_offset = 0; $cdh_extras = 0, $ptag = 0;
 
+	_append(269, 6, 1, $_[2] . "\000");    # SHA1
+	_append(273, 6, 1, $_[3] . "\000");    # SHA256
 	_append(1000, 4, 1, pack("N", $_[0] - 32)); # SIZE # XXX -32 !!!
-	_append(1004, 7, 16, $_[1]);        # MD5
-	#_append(269, 6, 1, $_[2] . "\000"); # SHA1
-	#_append(273, 6, 1, $_[3] . "\000"); # SHA256
+	_append(1004, 7, 16, $_[1]);           # MD5
+	_append(1007, 4, 1, pack("N", $_[4])); # PLSIZE
+	_append(1008, 7, 6, "\0" x 6);         # RESERVEDSPACE
+
+	my $ixcnt = scalar @cdh_data - $cdh_extras + 1;
+	my $sx = (0x10000000 - $ixcnt) * 16;
+	_append(62, 7, 16, pack("NNNN", 0x3e, 7, $sx, 0x10)); # HDRSIG
+	my $hs = pop @cdh_index;
 
 	my $header = join '', @cdh_data;
-	my ($ixlen, $dlen) = (scalar @cdh_data - $cdh_extras, length $header);
-	my $hdrhdr = pack "CCCCNNN", 0x8e, 0xad, 0xe8, 0x01, 0, $ixlen, $dlen;
-	my $pad = $dlen % 8; $pad = 8 - $pad if $pad != 0;
-	return $hdrhdr . join('', @cdh_index) . $header . "\0" x $pad;
+	my $hlen = length $header;
+	my $hdrhdr = pack "CCCCNNN", 0x8e, 0xad, 0xe8, 0x01, 0, $ixcnt, $hlen;
+
+	my $pad = $hlen % 8; $pad = 8 - $pad if $pad != 0;
+	return $hdrhdr . join('', $hs, @cdh_index) . $header . "\0" x $pad;
     }
 
-    sub createdataheader($$) # npkg, cpiofile
+    sub createdataheader($) # npkg
     {
-	@cdh_index = (); @cdh_data = (); $cdh_offset = 0; $cdh_extras = 0;
-	sub _fill_dep_tags($$$$)
+	@cdh_index = (); @cdh_data = (); $cdh_offset = 0; $cdh_extras = 0; $ptag = 0;
+	sub _dep_tags($)
 	{
 	    return unless defined $_[0]; # depstring
-	    my ($depstring, $nametag, $flagtag, $versiontag) = @_;
 	    my (@depversion, @depflags, @depname);
-	    my @deps = split (/\s*,\s*/, $depstring);
+	    my @deps = split (/\s*,\s*/, $_[0]);
 	    foreach (@deps) {
 		my ($name, $flag, $version) = split (/\s*([><]*[>=<])\s*/, $_);
 		push @depname, $name;
@@ -730,10 +741,13 @@ foreach (@pkgnames)
 	    }
 	    my $count = scalar @deps;
 	    if ($count > 0) {
-		_append($nametag, 8, $count, join("\000", @depname) . "\000"); #depsname
-		_append($flagtag, 4, $count, pack "N" . $count, @depflags); #depflag
-		_append($versiontag, 8, $count, join("\000", @depversion) . "\000"); #depsversion
+		return ($count,
+			pack("N" . $count, @depflags),
+			join("\000", @depname) . "\000",
+			join("\000", @depversion) . "\000")
 	    }
+	    #else
+	    return ( 0 )
 	}
 
 	_append(100, 6, 1, "C\000"); # hdri18n, atm
@@ -745,99 +759,108 @@ foreach (@pkgnames)
 	my $description = join '', @{$description{$_[0]}};
 	$description =~ s/\s+$//;
 	_append(1005, 6, 1, "$description\000"); # descrip, atm
-	_append(1009, 4, 1, pack("N", $cpio_dsize) ); # size
+	_append(1006, 4, 1, pack("N", $buildtime) ); # buildtime
+	_append(1007, 6, 1, "$buildhost\000"); # buildhost
+	_append(1009, 4, 1, pack("N", $sizet) ); # size
 	_append(1014, 6, 1, "$packages{''}->[1]->{license}\000"); # license, atm
-	my $group = $packages{$_[0]}->[1]->{group} // 'unspecified';
+	my $group = $packages{$_[0]}->[1]->{group} // 'Unspecified';
 	_append(1016, 6, 1, "$group\000");
 	if (! $building_src_pkg) {
 	    _append(1021, 6, 1, "$target_os\000"); # os
 	    _append(1022, 6, 1, "$target_arch\000"); # arch
 	}
-	#_append(1046, 4, 1, pack("N", -s $_[1]) ); # archivesize ("invalid" v4)
-	_append(1124, 6, 1, "cpio\000"); # payloadfmt
-	_append(1125, 6, 1, "gzip\000"); # payloadcomp
+
+	_append(1023, 6, 1, $pre{$npkg} . "\000")    if defined $pre{$npkg};
+	_append(1024, 6, 1, $post{$npkg} . "\000")   if defined $post{$npkg};
+	_append(1025, 6, 1, $preun{$npkg} . "\000")  if defined $preun{$npkg};
+	_append(1026, 6, 1, $postun{$npkg} . "\000") if defined $postun{$npkg};
 
 	my $count;
-	$count = scalar @files;
-	_append(1117, 8, $count, join("\000", @files) . "\000");
-	$count = scalar @dirs;
-	_append(1118, 8, $count, join("\000", @dirs) . "\000");
-	$count = scalar @dirindexes;
-	_append(1116, 4, $count, pack "N" . $count, @dirindexes);
-	$count = scalar @modes;
-	_append(1030, 3, $count, pack "n" . $count, @modes);
 	$count = scalar @sizes;
 	_append(1028, 4, $count, pack "N" . $count, @sizes);
-	# moved last.
-	#$count = scalar @mtimes;
-	#_append(1034, 4, $count, pack "N" . $count, @mtimes);
+	$count = scalar @modes;
+	_append(1030, 3, $count, pack "n" . $count, @modes);
+	$count = scalar @mtimes;
+	_append(1034, 4, $count, pack "N" . $count, @mtimes);
 	$count = scalar @md5sums;
 	_append(1035, 8, $count, join("\000", @md5sums) . "\000");
 	$count = scalar @unames;
 	_append(1039, 8, $count, join("\000", @unames) . "\000");
 	$count = scalar @gnames;
 	_append(1040, 8, $count, join("\000", @gnames) . "\000");
+	my ($pcnt, $t1112, $t1113) = 0;
 	if ($building_src_pkg) {
-	    _fill_dep_tags($packages{$_[0]}->[1]->{buildrequires}, 1049, 1048, 1050);
+	    #_fill_dep_tags($packages{$_[0]}->[1]->{buildrequires}, 1048, 1049, 1050);
 	}
 	else {
 	    # source rpm, if there were any...(outcommented now, may get back?)
-	    #_append(1044, 6, 1, "$macros{name}-$macros{version}-src.rpm\000");
-	    _fill_dep_tags($packages{$_[0]}->[1]->{requires}, 1049, 1048, 1050);
+	    _append(1044, 6, 1, "$macros{name}-$macros{version}-src.rpm\000");
 	    my $p = $packages{$_[0]}->[1]->{provides} || '';
-	    _fill_dep_tags("$rpmname=$macros{version}-$macros{release},$p", 1047, 1112, 1113);
-	}
-	_append(1006, 4, 1, pack("N", $buildtime) ); # buildtime
-	_append(1007, 6, 1, "$buildhost\000"); # buildhost
-
-
-	if (defined $pre{$npkg}) {
-	    _append(1023, 6, 1, $pre{$npkg} . "\000");
-	    _append(1085, 6, 1, "/bin/sh\000"); # preprog
-	}
-	if (defined $post{$npkg}) {
-	    _append(1024, 6, 1, $post{$npkg} . "\000");
-	    _append(1086, 6, 1, "/bin/sh\000"); # postprog
-	}
-	if (defined $preun{$npkg}) {
-	    _append(1025, 6, 1, $preun{$npkg} . "\000");
-	    _append(1087, 6, 1, "/bin/sh\000"); # preunprog
-	}
-	if (defined $postun{$npkg}) {
-	    _append(1026, 6, 1, $postun{$npkg} . "\000");
-	    _append(1088, 6, 1, "/bin/sh\000"); # postunprog
+	    my $t2;
+	    ($pcnt, $t1112, $t2, $t1113) = _dep_tags "$rpmname=$macros{version}-$macros{release},$p";
+	    _append 1047, 8, $pcnt, $t2 if $pcnt;
+	    my ($c, $t1, $t3);
+	    ($c, $t1, $t2, $t3) = _dep_tags $packages{$_[0]}->[1]->{requires};
+	    if ($c) {
+		_append 1048, 4, $c, $t1;
+		_append 1049, 8, $c, $t2;
+		_append 1050, 8, $c, $t3;
+	    }
 	}
 
-	# mtimes moved last, so that header is aligned by 4...
-	$count = scalar @mtimes;
-	_append(1034, 4, $count, pack "N" . $count, @mtimes);
+	_append(1085, 6, 1, "/bin/sh\000") if defined $pre{$npkg};
+	_append(1086, 6, 1, "/bin/sh\000") if defined $post{$npkg};
+	_append(1087, 6, 1, "/bin/sh\000") if defined $preun{$npkg};
+	_append(1088, 6, 1, "/bin/sh\000") if defined $postun{$npkg};
+
+	if ($pcnt) {
+	    _append 1112, 4, $pcnt, $t1112;
+	    _append 1113, 8, $pcnt, $t1113;
+	}
+
+	$count = scalar @dirindexes;
+	_append(1116, 4, $count, pack "N" . $count, @dirindexes);
+	$count = scalar @files;
+	_append(1117, 8, $count, join("\000", @files) . "\000");
+	$count = scalar @dirs;
+	_append(1118, 8, $count, join("\000", @dirs) . "\000");
+
+	_append(1124, 6, 1, "cpio\000"); # payloadfmt
+	_append(1125, 6, 1, "gzip\000"); # payloadcomp
+
+	my $ixcnt = scalar @cdh_data - $cdh_extras + 1;
+	my $sx = (0x10000000 - $ixcnt) * 16;
+	_append(63, 7, 16, pack("NNNN", 0x3f, 7, $sx, 0x10)); # HDRIMM
+	my $hi = pop @cdh_index;
 
 	my $header = join '', @cdh_data;
-	my $hdrhdr = pack "CCCCNNN", 0x8e, 0xad, 0xe8, 0x01, 0,
-	  scalar @cdh_data - $cdh_extras, length($header);
+	my $hlen = length $header;
+	my $hdrhdr = pack "CCCCNNN", 0x8e, 0xad, 0xe8, 0x01, 0, $ixcnt, $hlen;
 
-	return $hdrhdr . join('', @cdh_index) . $header;
+	return $hdrhdr . join('', $hi, @cdh_index) . $header;
     }
 
-    my $dhdr = createdataheader $npkg, $cpiofile;
+    my $dhdr = createdataheader $npkg;
+    my $cpiosize = -s $cpiofile;
     system 'gzip', '-n', $cpiofile;
     my $ctx;
     $ctx = Digest->new('MD5'); $ctx->add($dhdr);
     open J, "$cpiofile.gz" or die $!; $ctx->addfile(*J); close J;
     my $md5 = $ctx->digest;
     $ctx = Digest->new('SHA-1'); $ctx->add($dhdr);
-    open J, "$cpiofile.gz" or die $!; $ctx->addfile(*J); close J;
     my $sha1 = $ctx->hexdigest;
     $ctx = Digest->new('SHA-256'); $ctx->add($dhdr);
-    open J, "$cpiofile.gz" or die $!; $ctx->addfile(*J); close J;
     my $sha256 = $ctx->hexdigest;
     my $shdr = createsigheader length($dhdr) + -s "$cpiofile.gz",
-                               $md5, $sha1, $sha256;
-    open STDOUT, '>', "$wdir.rpm" or die $!;
+                               $md5, $sha1, $sha256, $cpiosize;
+    open STDOUT, '>', "$wdir.rpm.wip" or die $!;
+    $| = 1;
     my $leadname = substr "$swname-$macros{release}", 0, 65;
     print pack 'NCCnnZ66nnZ16', 0xedabeedb, 3, 0, $building_src_pkg,
-	$os_canon, $leadname, $arch_canon, 5, "\0";
+	$arch_canon, $leadname, $os_canon, 5, "\0";
     print $shdr, $dhdr;
     system('/bin/cat' ,"$cpiofile.gz");
-    open STDOUT, ">&STDERR" or die;
+    open STDOUT, ">&STDERR" or die $!;
+    rename "$wdir.rpm.wip", "$wdir.rpm" or die $!;
+    print "Wrote '$wdir.rpm'\n";
 }
