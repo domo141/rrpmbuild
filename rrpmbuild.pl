@@ -45,7 +45,7 @@ use Digest;
 
 # from rpm-4.8.0/rpmrc.in (aarch64 from rpm-4.19.1.1/rpmrc.in)
 
-my %arch_canon = ( noarch => 1, # rpmpeek()ed (hmm some have 1, some 255 :O)
+my %arch_canon = ( noarch => 255, # rpmpeek()ed and file(1)d (rpm src too hard)
 		   i686 => 1, i586 => 1, i486 => 1, i386 => 1, x86_64 => 1,
 		   armv3l => 12, armv4b => 12, armv4l => 12, armv5tel => 12,
 		   armv5tejl => 12, armv6l => 12, armv7l => 12, armv7hl => 12,
