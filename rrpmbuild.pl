@@ -133,6 +133,8 @@ die "$0: too many arguments\n" if @ARGV > 0;
 
 $rpmdir = 'rrpmbuild' unless defined $rpmdir;
 
+my ($host_os, $host_arch) = grep { $_ = lc } split /\s+/, qx/uname -m -s/;
+
 my ($target_os, $vendor, $target_arch);
 if (defined $targett) {
     die "'$targett': unknown --target format\n"
@@ -140,7 +142,7 @@ if (defined $targett) {
     ($target_arch, $vendor, $target_os) = ($1, $2, $3);
 } else {
     $vendor = 'unknown';
-    ($target_os, $target_arch) = grep { $_ = lc } split /\s+/, qx/uname -m -s/;
+    ($target_os, $target_arch) = ($host_os, $host_arch);
 }
 my $os_canon = $os_canon{$target_os};
 my $arch_canon = $arch_canon{$target_arch};
@@ -169,6 +171,8 @@ sub init_macros()
 		_oldincludedir => '/usr/include',
 		_infodir => $prefix . '/info',
 		_mandir => $prefix . '/man',
+		_host_cpu => $host_arch,
+		_host_os => $host_os,
 		_target_cpu => $target_arch,
 		_vendor => $vendor,
 		_target_os => $target_os,
