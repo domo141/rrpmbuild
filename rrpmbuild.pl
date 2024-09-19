@@ -51,7 +51,7 @@ my %arch_canon = ( noarch => 255, # rpmpeek()ed and file(1)d (rpm src too hard)
 		   armv5tejl => 12, armv6l => 12, armv7l => 12, armv7hl => 12,
 		   armv7nhl => 12, arm => 12, aarch64 => 19 );
 
-my %os_canon = ( Linux => 1 );
+my %os_canon = ( Linux => 1, linux => 1 );
 
 # packages array defines order for packages + other hashes.
 my @pkgnames = ('');
@@ -65,10 +65,10 @@ my @changelog;
 
 sub usage()
 {
-    die "Usage: $0 [--rpmdir=DIR] [--buildtime=SECS] [--buildhost=HOSTNAME] (-bb|-bs) SPECFILE\n";
+    die "Usage: $0 [--rpmdir=DIR] [--buildhost=HOSTNAME] [--target=PLATFORM] (-bb|-bs) SPECFILE\n";
 }
 
-my ($specfile, $building_src_pkg, $rpmdir, $buildtime, $buildhost);
+my ($specfile, $building_src_pkg, $rpmdir, $buildhost, $targett);
 
 while (@ARGV > 0) {
     $_ = shift @ARGV;
@@ -93,6 +93,7 @@ while (@ARGV > 0) {
 	$rpmdir = shift @ARGV;
 	next;
     }
+    # XXX not in rpmbuild(8), maybe replace w/ something ?
     if ($_ =~ /--buildhost=(.*)/) {
 	die "Buildhost chosen already\n" if defined $buildhost;
 	$buildhost = $1;
@@ -104,12 +105,23 @@ while (@ARGV > 0) {
 	$buildhost = shift @ARGV;
 	next;
     }
+    if ($_ =~ /--target=(.*)/) {
+	die "Target chosen already\n" if defined $targett;
+	$targett = lc $1;
+	next;
+    }
+    if ($_ eq '--target') {
+	die "Target chosen already\n" if defined $targett;
+	die "$0: option '--target' requires an argument\n" unless @ARGV > 0;
+	$targett = lc shift @ARGV;
+	next;
+    }
     $specfile = $_;
     last;
 }
 
 my $sde = $ENV{SOURCE_DATE_EPOCH} // '';
-$buildtime = ($sde ne '')? $sde + 0: time;
+my $buildtime = ($sde ne '')? $sde + 0: time;
 
 use Net::Domain ();
 $buildhost = Net::Domain::hostname unless defined $buildhost;
@@ -120,6 +132,21 @@ die "$0: missing specfile\n" unless defined $specfile;
 die "$0: too many arguments\n" if @ARGV > 0;
 
 $rpmdir = 'rrpmbuild' unless defined $rpmdir;
+
+my ($target_os, $vendor, $target_arch);
+if (defined $targett) {
+    die "'$targett': unknown --target format\n"
+      unless $targett =~ /(\w+)-(\w+)-(\w+)/;
+    ($target_arch, $vendor, $target_os) = ($1, $2, $3);
+} else {
+    $vendor = 'unknown';
+    ($target_os, $target_arch) = grep { $_ = lc } split /\s+/, qx/uname -m -s/;
+}
+my $os_canon = $os_canon{$target_os};
+my $arch_canon = $arch_canon{$target_arch};
+
+die "'$target_os': unknown os\n" unless defined $os_canon;
+die "'$target_arch': unknown arch\n" unless defined $arch_canon;
 
 my %macros;
 sub init_macros()
@@ -142,6 +169,9 @@ sub init_macros()
 		_oldincludedir => '/usr/include',
 		_infodir => $prefix . '/info',
 		_mandir => $prefix . '/man',
+		_target_cpu => $target_arch,
+		_vendor => $vendor,
+		_target_os => $target_os,
 
 		setup => 'echo no %prep' );
 }
@@ -151,12 +181,14 @@ my $instrlen = length $instroot;
 
 $ENV{'RPM_BUILD_ROOT'} = $instroot;
 $ENV{'RPM_OPT_FLAGS'} = '-O2';
+$ENV{'RPM_ARCH'} = $target_arch;
+$ENV{'RPM_OS'} = $target_os;
 #$ENV{''} = '';
 #$ENV{''} = '';
 
 sub rest_macros()
 {
-    sub NL() { "\n"; }
+    sub NL() { "\n" }
     $macros{'buildroot'} = $ENV{'RPM_BUILD_ROOT'};
     $macros{'makeinstall'} = eval_macros ( 'make install \\' . NL .
 		'  prefix=%{buildroot}/%{_prefix} \\' . NL .
@@ -231,7 +263,13 @@ sub readspec()
 		if ($building_src_pkg && $key =~ /(source|patch)[0-9]+/) {
 		    push @{ $files{''} }, $val;
 		}
-		next;
+		if ($key eq 'buildarch') {
+		    die "Support only 'noarch' for $K (not $val)\n"
+		      unless $val eq 'noarch';
+		    # XXX should re-eval macros but just have early enough
+		    $macros{_target_cpu} = $target_arch = $val
+		}
+		next
 	    }
 	    chomp;
 	    die "'$_': unknown header format\n";
@@ -327,19 +365,9 @@ foreach (qw/name version release/) {
 #rest_macros; # moved above for now. smarter variable expansion coming later.
 
 # XXX check what must be in "sub" packages (hmm maeby out-of-scope)
-foreach (qw/license summary buildarch/) {
+foreach (qw/license summary/) {
     die "Package $_ not known\n" unless (defined $packages{''}->[1]->{$_});
 }
-
-# XXX expect user to know how to cross-compile if that is the case
-#my ($target_os, $target_arch) = split /\s+/, qx/uname -m -s/;
-my ($target_os, $target_arch) = ('Linux', $packages{''}->[1]->{buildarch});
-my $os_canon = $os_canon{$target_os};
-my $arch_canon = $arch_canon{$target_arch};
-
-die "'$target_os': unknown os\n" unless defined $os_canon;
-die "'$target_arch': unknown arch\n" unless defined $arch_canon;
-
 
 # check that we have description and files for all packages
 # description and/or files sections that do not have packages
@@ -688,8 +716,8 @@ foreach (@pkgnames)
 
     sub createsigheader($$$$$)
     {
-	@cdh_index = (); @cdh_data = (); $cdh_offset = 0; $cdh_extras = 0, $ptag = 0;
-
+	@cdh_index = (); @cdh_data = (); $cdh_offset = 0; $cdh_extras = 0;
+	$ptag = 0;
 	_append(269, 6, 1, $_[2] . "\000");    # SHA1
 	_append(273, 6, 1, $_[3] . "\000");    # SHA256
 	_append(1000, 4, 1, pack("N", $_[0] - 32)); # SIZE # XXX -32 !!!
@@ -712,7 +740,8 @@ foreach (@pkgnames)
 
     sub createdataheader($) # npkg
     {
-	@cdh_index = (); @cdh_data = (); $cdh_offset = 0; $cdh_extras = 0; $ptag = 0;
+	@cdh_index = (); @cdh_data = (); $cdh_offset = 0; $cdh_extras = 0;
+	$ptag = 0;
 	sub _dep_tags($)
 	{
 	    return unless defined $_[0]; # depstring
@@ -790,14 +819,20 @@ foreach (@pkgnames)
 	_append(1040, 8, $count, join("\000", @gnames) . "\000");
 	my ($pcnt, $t1112, $t1113) = 0;
 	if ($building_src_pkg) {
-	    #_fill_dep_tags($packages{$_[0]}->[1]->{buildrequires}, 1048, 1049, 1050);
+	    my ($c, $t1, $t2, $t3)
+	      = _dep_tags $packages{$_[0]}->[1]->{buildrequires};
+	      if ($c) {
+		  _append 1048, 4, $c, $t1;
+		  _append 1049, 8, $c, $t2;
+		  _append 1050, 8, $c, $t3;
+	      }
 	}
 	else {
-	    # source rpm, if there were any...(outcommented now, may get back?)
 	    _append(1044, 6, 1, "$macros{name}-$macros{version}-src.rpm\000");
 	    my $p = $packages{$_[0]}->[1]->{provides} || '';
 	    my $t2;
-	    ($pcnt, $t1112, $t2, $t1113) = _dep_tags "$rpmname=$macros{version}-$macros{release},$p";
+	    ($pcnt, $t1112, $t2, $t1113)
+	      = _dep_tags "$rpmname=$macros{version}-$macros{release},$p";
 	    _append 1047, 8, $pcnt, $t2 if $pcnt;
 	    my ($c, $t1, $t3);
 	    ($c, $t1, $t2, $t3) = _dep_tags $packages{$_[0]}->[1]->{requires};
@@ -827,6 +862,8 @@ foreach (@pkgnames)
 
 	_append(1124, 6, 1, "cpio\000"); # payloadfmt
 	_append(1125, 6, 1, "gzip\000"); # payloadcomp
+
+	_append(1132, 6, 1, "$target_arch-$vendor-$target_os\000"); # platform
 
 	my $ixcnt = scalar @cdh_data - $cdh_extras + 1;
 	my $sx = (0x10000000 - $ixcnt) * 16;
