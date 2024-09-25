@@ -31,6 +31,8 @@ use Digest;
 # So far, this is proof-of-concept implementation (read: terrible hack).
 # Even some mentioned features do not work... and tested only on linux
 # with perl 5.10.x // 2010-06-10 too
+# As of 2024-09-25 things may have improved, and produdes more or less
+# good rpm v4 format packages...
 
 # Welcome to the source of 'restricted' rpmbuild. The 'restrictions' are:
 #  does not check things that "real" rpm does (e.g. no binaries in noarch pkg)
@@ -65,8 +67,17 @@ my @changelog;
 
 sub usage()
 {
-    die "Usage: $0",
-      ' [--target=PLATFORM] [-D "MACRO VAL"...] (-bb|-bs) SPECFILE', "\n";
+    $_ = $0; s,.*/,,;
+
+    die "\nUsage: $_",
+      ' [--target=PLATFORM] [-D "MACRO VAL"...] (-bb|-bs) SPECFILE', qq:\n
+    Environment variable 'SOURCE_DATE_EPOCH' does what one might expect.
+    Option -D '_buildhost {buildhost}' sets (fixed) RPMTAG_BUILDHOST.
+    "--build-in-place" implied, -D '_rpmdir {rpmdir}' changes _rpmdir
+    (from 'build-rpms') -- this directory is created (if it didn't exist)
+    before stage executions start. "Buildroot" points to a subdirectory
+    in there and final rpms are written there. Current working directory
+    is *not* changed there (stays in \$PWD) when stage executions start.\n\n:;
 }
 
 my ($specfile, $building_src_pkg, $targett, @defines, %macros);
@@ -123,7 +134,7 @@ usage unless defined $building_src_pkg;
 die "$0: missing specfile\n" unless defined $specfile;
 die "$0: too many arguments\n" if @ARGV > 0;
 
-my $rpmdir = $macros{'_rpmdir'} // 'rrpmbuilds';
+my $rpmdir = $macros{'_rpmdir'} // 'build-rpms';
 
 my ($host_os, $host_arch) = grep { $_ = lc } split /\s+/, qx/uname -m -s/;
 
@@ -199,7 +210,6 @@ sub rest_macros()
 {
     $instroot =
       $building_src_pkg? '.': "$rpmdir/br--$macros{_target_platform}";
-      #$building_src_pkg? '.': "$rpmdir/$target_arch-$vendor-$target_os";
     $instrlen = length $instroot;
 
     $ENV{'RPM_BUILD_ROOT'} = $instroot;
@@ -209,12 +219,12 @@ sub rest_macros()
     $ENV{'LANG'} = $ENV{'LC_ALL'} = 'C';
     #$ENV{''} = '';
 
-    $macros{buildroot} = $ENV{'RPM_BUILD_ROOT'};
+    $macros{buildroot} = $instroot;
     foreach (@defines) {
 	/(\w+)\s+(.*)/; $macros{$1} = eval_macros $2
     }
     sub NL() { "\n" }
-    # makeinstall deprecated -- so no updates (e.g. NL removal)
+    # makeinstall deprecated -- so no updates
     $macros{'makeinstall'} = eval_macros ( 'make install \\' . NL .
 		'  prefix=%{buildroot}/%{_prefix} \\' . NL .
 		'  exec_prefix=%{buildroot}/%{_exec_prefix} \\' . NL .
@@ -889,7 +899,7 @@ foreach (@pkgnames)
 	_append(1124, 6, 1, "cpio\000"); # payloadfmt
 	_append(1125, 6, 1, "gzip\000"); # payloadcomp
 
-	_append(1132, 6, 1, "$target_arch-$vendor-$target_os\000"); # platform
+	_append(1132, 6, 1, "$macros{_target_platform}\000"); # platform
 
 	my $ixcnt = scalar @cdh_data - $cdh_extras + 1;
 	my $sx = (0x10000000 - $ixcnt) * 16;
