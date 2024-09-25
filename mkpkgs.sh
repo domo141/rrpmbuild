@@ -2,23 +2,12 @@
 # -*- mode: shell-script; sh-basic-offset: 8; tab-width: 8 -*-
 # $ mkpkgs.sh $
 
-set -eu
-#set -x
-
-saved_IFS=$IFS
-readonly saved_IFS
-
-case ~ in '~') exec >&2; echo
-	echo "Shell '/bin/sh' lacks some required modern shell functionality."
-	echo "Try 'ksh $0${1+ $*}', 'bash $0${1+ $*}'"
-	echo " or 'zsh $0${1+ $*}' instead."; echo
-	exit 1
-esac
-
 case ${BASH_VERSION-} in *.*) shopt -s xpg_echo; esac
 case ${ZSH_VERSION-} in *.*) emulate ksh; esac
 
-die () { echo "$@" >&2; exit 1; }
+set -euf  # hint: (z|ba|da|'')sh -x thisfile [args] to trace execution
+
+die () { printf '%s\n' '' "$@" ''; exit 1; } >&2
 
 mkvers ()
 {
@@ -50,7 +39,7 @@ cp rpmpeek.pl rrpmbuild.pl dot-build/usr/bin
 
 SIZE=`du -ks dot-build | tr -dc 0-9`
 
-export TAR_OPTIONS="--format=gnu --owner=root --group=root"
+export TAR_OPTIONS='--format=ustar --owner=root --group=root --sort=name'
 
 PKG=rrpmbuild
 
@@ -72,8 +61,8 @@ Description: R rpm build tool
  Och Samma på svenska
  Niinkuin myös suomeksi"
 
-( cd dot-build/DEBIAN; exec tar zcf control.tar.gz ./control )
-( cd dot-build; exec tar --exclude '[DR][EP][BM]*' -zcf DEBIAN/data.tar.gz . )
+( cd dot-build/DEBIAN; exec tar -I 'gzip -n' -cf control.tar.gz ./control )
+( cd dot-build; exec tar --exclude '[DR][EP][BM]*' -I 'gzip -n' -cf DEBIAN/data.tar.gz . )
 ( cd dot-build/DEBIAN;
   ln ../../mkpkgs.sh .
   ARCHIVE_TIME=$SECS; export ARCHIVE_TIME
@@ -90,6 +79,7 @@ Name: $PKG
 Version: $VERS
 Release: $RELN
 Summary: R rpm build tool
+BuildArch: noarch
 
 Group: Development/Tools
 License: Confidential
@@ -117,11 +107,12 @@ echo installed
 * Fri Mar 15 2013 Tomi Ollila <tomi.ollila@iki.fi> - 0.5
 - Yes, there were changes made"
 
-./rrpmbuild.pl --buildhost=localhost --rpmdir=dot-build/RPM -bb \
+./rrpmbuild.pl -D '_buildhost localhost' -D '_rpmdir dot-build/RPM' -bb \
 	dot-build/RPM/rpm.spec
+set +f
 mv dot-build/RPM/*.rpm dot-build
-set -x
-ls -l dot-build
+echo
+ls -godF dot-build/*
 exit
 
 #!perl

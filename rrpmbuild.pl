@@ -51,7 +51,7 @@ my %arch_canon = ( noarch => 255, # rpmpeek()ed and file(1)d (rpm src too hard)
 		   armv5tejl => 12, armv6l => 12, armv7l => 12, armv7hl => 12,
 		   armv7nhl => 12, arm => 12, aarch64 => 19 );
 
-my %os_canon = ( Linux => 1, linux => 1 );
+my %os_canon = ( linux => 1 );
 
 # packages array defines order for packages + other hashes.
 my @pkgnames = ('');
@@ -65,81 +65,75 @@ my @changelog;
 
 sub usage()
 {
-    die "Usage: $0 [--rpmdir=DIR] [--buildhost=HOSTNAME] [--target=PLATFORM] (-bb|-bs) SPECFILE\n";
+    die "Usage: $0",
+      ' [--target=PLATFORM] [-D "MACRO VAL"...] (-bb|-bs) SPECFILE', "\n";
 }
 
-my ($specfile, $building_src_pkg, $rpmdir, $buildhost, $targett);
+my ($specfile, $building_src_pkg, $targett, @defines, %macros);
 
 while (@ARGV > 0) {
     $_ = shift @ARGV;
     if ($_ eq '-bb') {
 	die "Build option chosen already\n" if defined $building_src_pkg;
 	$building_src_pkg = 0;
-	next;
+	next
     }
     if ($_ eq '-bs') {
 	die "Build option chosen already\n" if defined $building_src_pkg;
 	$building_src_pkg = 1;
-	next;
+	next
     }
-    if ($_ =~ /--rpmdir=(.*)/) {
-	die "Rpmdir chosen already\n" if defined $rpmdir;
-	$rpmdir = $1;
-	next;
-    }
-    if ($_ eq '--rpmdir') {
-	die "Rpmdir chosen already\n" if defined $rpmdir;
-	die "$0: option '--rpmdir' requires an argument\n" unless @ARGV > 0;
-	$rpmdir = shift @ARGV;
-	next;
-    }
-    # XXX not in rpmbuild(8), maybe replace w/ something ?
-    if ($_ =~ /--buildhost=(.*)/) {
-	die "Buildhost chosen already\n" if defined $buildhost;
-	$buildhost = $1;
-	next;
-    }
-    if ($_ eq '--buildhost') {
-	die "Buildhost chosen already\n" if defined $buildhost;
-	die "$0: option '--buildhost' requires an argument\n" unless @ARGV > 0;
-	$buildhost = shift @ARGV;
-	next;
+    if ($_ eq '--target') {
+	die "Target chosen already\n" if defined $targett;
+	die "$0: option '$_' requires an argument\n" unless @ARGV > 0;
+	$targett = lc shift @ARGV;
+	next
     }
     if ($_ =~ /--target=(.*)/) {
 	die "Target chosen already\n" if defined $targett;
 	$targett = lc $1;
-	next;
+	next
     }
-    if ($_ eq '--target') {
-	die "Target chosen already\n" if defined $targett;
-	die "$0: option '--target' requires an argument\n" unless @ARGV > 0;
-	$targett = lc shift @ARGV;
-	next;
+    if ($_ eq '-D') {
+	die "$0: option '$_' requires an argument\n" unless @ARGV > 0;
+	$_ = shift @ARGV;
+	die "'$_' not macro[ ]val\n" unless /^(\w+)[ ](.*)/;
+	push @defines, "$1 $2";
+	$macros{$1} = $2;
+	next
     }
+    if ($_ =~ /-D(.+)/) {
+	$_ = $1;
+	die "'$_' not macro[ =]val\n" unless /^(\w+)[ ](.*)/;
+	push @defines, "$1 $2"; # hash ?
+	next
+    }
+    next if $_ eq '--build-in-place';
     $specfile = $_;
-    last;
+    last
 }
+
+my $buildhost = $macros{_buildhost} // '';
 
 my $sde = $ENV{SOURCE_DATE_EPOCH} // '';
 my $buildtime = ($sde ne '')? $sde + 0: time;
-
-use Net::Domain ();
-$buildhost = Net::Domain::hostname unless defined $buildhost;
 
 usage unless defined $building_src_pkg;
 
 die "$0: missing specfile\n" unless defined $specfile;
 die "$0: too many arguments\n" if @ARGV > 0;
 
-$rpmdir = 'rrpmbuild' unless defined $rpmdir;
+my $rpmdir = $macros{'_rpmdir'} // 'rrpmbuilds';
 
 my ($host_os, $host_arch) = grep { $_ = lc } split /\s+/, qx/uname -m -s/;
 
 my ($target_os, $vendor, $target_arch);
 if (defined $targett) {
-    die "'$targett': unknown --target format\n"
-      unless $targett =~ /(\w+)-(\w+)-(\w+)/;
-    ($target_arch, $vendor, $target_os) = ($1, $2, $3);
+    my @p = split /-/, $targett;
+    die "'$targett': unknown --target format\n" if @p > 3;
+    push @p, 'unknown' if @p == 1;
+    push @p, 'linux' if @p == 2;
+    ($target_arch, $vendor, $target_os) = @p;
 } else {
     $vendor = 'unknown';
     ($target_os, $target_arch) = ($host_os, $host_arch);
@@ -150,50 +144,77 @@ my $arch_canon = $arch_canon{$target_arch};
 die "'$target_os': unknown os\n" unless defined $os_canon;
 die "'$target_arch': unknown arch\n" unless defined $arch_canon;
 
-my %macros;
 sub init_macros()
 {
     my ($prefix, $exec_prefix, $lib) = ( '/usr', '/usr', 'lib' );
 
-    %macros = ( _prefix => $prefix,
-		_exec_prefix => $exec_prefix,
-		_exec_prefix => $exec_prefix,
-		_bindir => $exec_prefix . '/bin',
-		_sbindir => $exec_prefix . '/sbin',
-		_libexecdir => $exec_prefix . '/libexec',
-		_datadir => $prefix . '/share',
-		_sysconfdir => $prefix . '/etc',
-		_sharedstatedir => $prefix . '/com',
-		_localstatedir => $prefix . '/var',
-		_lib => $lib,
-		_libdir => $exec_prefix . '/' . $lib,
-		_includedir => $prefix . '/include',
-		_oldincludedir => '/usr/include',
-		_infodir => $prefix . '/info',
-		_mandir => $prefix . '/man',
-		_host_cpu => $host_arch,
-		_host_os => $host_os,
-		_target_cpu => $target_arch,
-		_vendor => $vendor,
-		_target_os => $target_os,
+    %macros =
+      ( _prefix => $prefix,
+	_exec_prefix => $exec_prefix,
+	_exec_prefix => $exec_prefix,
+	_bindir => $exec_prefix . '/bin',
+	_sbindir => $exec_prefix . '/sbin',
+	_libexecdir => $exec_prefix . '/libexec',
+	_datadir => $prefix . '/share',
+	_sysconfdir => $prefix . '/etc',
+	_sharedstatedir => $prefix . '/com',
+	_localstatedir => $prefix . '/var',
+	_lib => $lib,
+	_libdir => $exec_prefix . '/' . $lib,
+	_includedir => $prefix . '/include',
+	_oldincludedir => '/usr/include',
+	_infodir => $prefix . '/info',
+	_mandir => $prefix . '/man',
+	_host_cpu => $host_arch,
+	_host_os => $host_os,
+	_target_cpu => $target_arch,
+	_vendor => $vendor,
+	_target_os => $target_os,
+	_rpmdir => $rpmdir,
+	_target_platform => "$target_arch-$vendor-$target_os",
 
-		setup => 'echo no %prep' );
+	setup => 'echo no %prep' );
 }
 
-my $instroot = $building_src_pkg? '.': "$rpmdir/instroot";
-my $instrlen = length $instroot;
+sub eval_macros($)
+{
+    my ($m, $rest) = split '#', $_[0], 2;
 
-$ENV{'RPM_BUILD_ROOT'} = $instroot;
-$ENV{'RPM_OPT_FLAGS'} = '-O2';
-$ENV{'RPM_ARCH'} = $target_arch;
-$ENV{'RPM_OS'} = $target_os;
-#$ENV{''} = '';
-#$ENV{''} = '';
+    sub _eval_it() {
+	return '%' if $1 eq '%';
+	return $macros{$1} if defined $macros{$1};
+	die "'$1': undefined macro\n";
+    }
 
+    #    s/%%/\001/g;
+    # dont be too picky if var is in format %{foo or %foo} ;) (i.e fix ltr)
+    $m =~ s/%\{?(%|[\w\?\!]+)\}?/_eval_it/ge;
+    #    s/\001/%/g;
+    return $m . '#' . $rest if defined $rest;
+    return $m;
+}
+
+my ($instroot, $instrlen);
 sub rest_macros()
 {
+    $instroot =
+      $building_src_pkg? '.': "$rpmdir/br--$macros{_target_platform}";
+      #$building_src_pkg? '.': "$rpmdir/$target_arch-$vendor-$target_os";
+    $instrlen = length $instroot;
+
+    $ENV{'RPM_BUILD_ROOT'} = $instroot;
+    $ENV{'RPM_OPT_FLAGS'} = '-O2';
+    $ENV{'RPM_ARCH'} = $target_arch;
+    $ENV{'RPM_OS'} = $target_os;
+    $ENV{'LANG'} = $ENV{'LC_ALL'} = 'C';
+    #$ENV{''} = '';
+
+    $macros{buildroot} = $ENV{'RPM_BUILD_ROOT'};
+    foreach (@defines) {
+	/(\w+)\s+(.*)/; $macros{$1} = eval_macros $2
+    }
     sub NL() { "\n" }
-    $macros{'buildroot'} = $ENV{'RPM_BUILD_ROOT'};
+    # makeinstall deprecated -- so no updates (e.g. NL removal)
     $macros{'makeinstall'} = eval_macros ( 'make install \\' . NL .
 		'  prefix=%{buildroot}/%{_prefix} \\' . NL .
 		'  exec_prefix=%{buildroot}/%{_exec_prefix} \\' . NL .
@@ -209,6 +230,16 @@ sub rest_macros()
 		'  mandir=%{buildroot}/%{_mandir} \\' . NL .
 		'  infodir=%{buildroot}/%{_infodir}'
 	      ) unless defined $macros{'makeinstall'};
+
+    if ($buildhost) {
+	$macros{_buildhost} = $buildhost;
+    } else {
+	$buildhost = $macros{_buildhost} // '';
+	unless ($buildhost) {
+	    require Net::Domain;
+	    $buildhost = $macros{_buildhost} = Net::Domain::hostname();
+	}
+    }
 }
 
 my %stanzas = ( package => 1, description => 1, changelog => 1,
@@ -216,24 +247,6 @@ my %stanzas = ( package => 1, description => 1, changelog => 1,
 		files => 1, pre => 1, post => 1, preun => 1, postun => 1 );
 sub readspec()
 {
-    sub eval_macros($)
-    {
-	my ($m, $rest) = split '#', $_[0], 2;
-
-	sub _eval_it() {
-	    return '%' if $1 eq '%';
-	    return $macros{$1} if defined $macros{$1};
-	    die "'$1': undefined macro\n";
-	}
-
-	#    s/%%/\001/g;
-	# dont be too picky if var is in format %{foo or %foo} ;) (i.e fix ltr)
-	$m =~ s/%\{?(%|[\w\?\!]+)\}?/_eval_it/ge;
-	#    s/\001/%/g;
-	return $m . '#' . $rest if (defined $rest);
-	return $m;
-    }
-
     sub readpackage($)
     {
 	my ($arref, $hashref) = ($_[0]->[0], $_[0]->[1]);
@@ -259,7 +272,8 @@ sub readspec()
 		$hashref->{$key} = $val;
 		# Add format checks, too...
 		if ($key eq 'name' || $key eq 'version' || $key eq 'release') {
-		    die "error: line $.: Tag takes single token only: $K: $val\n"
+		    die
+		      "error: line $.: Tag takes single token only: $K: $val\n"
 		      if $val =~ /\s/;
 		    $macros{$key} = $val
 		}
@@ -270,8 +284,13 @@ sub readspec()
 		if ($key eq 'buildarch') {
 		    die "Support only 'noarch' for $K (not $val)\n"
 		      unless $val eq 'noarch';
+		    if (defined $targett) {
+			die "'$target_arch' not BuildArch: '$val'",
+			  " seen in '$specfile'\n" unless $target_arch eq $val;
+		    }
 		    # XXX should re-eval macros but just have early enough
-		    $macros{_target_cpu} = $target_arch = $val
+		    $macros{_target_cpu} = $target_arch = $val;
+		    $macros{_target_platform} = "$val-$vendor-$target_os";
 		}
 		next
 	    }
@@ -319,6 +338,7 @@ sub readspec()
 
     readpackage ($packages{''});
     rest_macros; # XXX
+
     while (1) {
 	chomp, die "'$_': unsupported stanza format.\n"
 	  unless /^\s*%(\w+)\s*(\S*?)\s*$/;
@@ -397,8 +417,10 @@ sub execute_stage($$)
 #skip prep ## and fix...
 #execute_stage 'clean', join '', @clean;
 if (! $building_src_pkg) {
+    unless (-d $rpmdir) {
+	system qw/mkdir -p/, $rpmdir unless mkdir $rpmdir;
+    }
     execute_stage 'build', join '', @build;
-    mkdir $rpmdir;
     execute_stage 'install', join '', @install;
 }
 
@@ -486,11 +508,11 @@ foreach (@pkgnames)
 {
     # Declare variables, to be dynamically scoped using local below.
     our ($fmode, $dmode, $uname, $gname, $havedoc);
-    our ($wdir, $pkgname, $swname, $npkg, $rpmname, @filelist);
+    our ($pkgname, $swname, $npkg, $rpmname, @filelist);
 
     # Use local instead of my -- the failure w/ my is a small mystery to me.
     local ($fmode, $dmode, $uname, $gname, $havedoc);
-    local ($wdir, $pkgname, $swname, $npkg, $rpmname, @filelist);
+    local ($pkgname, $swname, $npkg, $rpmname, @filelist);
 
     #warn 'XXXX 1 ', \@filelist, "\n"; # see also XXXX 2 & XXXX 3
 
@@ -677,12 +699,12 @@ foreach (@pkgnames)
 	}
     }
 
-    $wdir = $rpmdir . '/' . $pkgname;
+    my $pkgfbase = $rpmdir . '/' . $pkgname;
+    my $cpiofile = $pkgfbase . '-cpio';
+    if (-e $cpiofile) {
+	unlink $cpiofile or die "Cannot unlink '$cpiofile': $!\n";
+    }
 
-    system ('/bin/rm', '-rf', $wdir);
-    system ('/bin/mkdir', '-p', $wdir);
-
-    my $cpiofile = $wdir . '/cpio';
     open_cpio_file $cpiofile;
     my $sizet = 0;
     foreach (sort { $a->[0] cmp $b->[0] } @filelist) {
@@ -883,7 +905,7 @@ foreach (@pkgnames)
 
     my $dhdr = createdataheader $npkg;
     my $cpiosize = -s $cpiofile;
-    system 'gzip', '-n', $cpiofile;
+    system 'gzip', '-fn', $cpiofile;
     my $ctx;
     $ctx = Digest->new('MD5'); $ctx->add($dhdr);
     open J, "$cpiofile.gz" or die $!; $ctx->addfile(*J); close J;
@@ -894,7 +916,7 @@ foreach (@pkgnames)
     my $sha256 = $ctx->hexdigest;
     my $shdr = createsigheader length($dhdr) + -s "$cpiofile.gz",
                                $md5, $sha1, $sha256, $cpiosize;
-    open STDOUT, '>', "$wdir.rpm.wip" or die $!;
+    open STDOUT, '>', "$pkgfbase.rpm.wip" or die $!;
     $| = 1;
     my $leadname = substr "$swname-$macros{release}", 0, 65;
     print pack 'NCCnnZ66nnZ16', 0xedabeedb, 3, 0, $building_src_pkg,
@@ -902,6 +924,6 @@ foreach (@pkgnames)
     print $shdr, $dhdr;
     system('/bin/cat' ,"$cpiofile.gz");
     open STDOUT, ">&STDERR" or die $!;
-    rename "$wdir.rpm.wip", "$wdir.rpm" or die $!;
-    print "Wrote '$wdir.rpm'\n";
+    rename "$pkgfbase.rpm.wip", "$pkgfbase.rpm" or die $!;
+    print "Wrote '$pkgfbase.rpm'\n";
 }
