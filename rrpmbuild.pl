@@ -264,7 +264,9 @@ sub readspec()
 	while (<I>) {
 	    s/#.*//;
 	    next if /^\s*$/;
-	    if (/^\s*%define\s+(\S+)\s+(.*?)\s*$/) {
+	    # %define should be handled differently (lazy eval) but...
+	    if (/^\s*%define\s+(\S+)\s+(.*?)\s*$/ or
+		/^\s*%global\s+(\S+)\s+(.*?)\s*$/) {
 		$macros{$1} = eval_macros $2;
 		next;
 	    }
