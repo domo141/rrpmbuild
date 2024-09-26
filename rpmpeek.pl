@@ -292,7 +292,8 @@ if (-x "$_/xcpio") {
 my %plfmtcmds = ( cpio => $cpiocmd );
 my %plcompcmds = ( gzip => 'gzip -dc',
 		   bzip2 => 'bzip2 -dc',
-		   xz => 'xz -dc' );
+		   xz => 'xz -dc',
+		   zstd => 'zstd -dc');
 
 my $plfmtcmd = $plfmtcmds{$plfmt};
 die "'$plfmt': not known playload format\n" unless defined $plfmtcmd;
