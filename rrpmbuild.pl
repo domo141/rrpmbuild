@@ -115,8 +115,9 @@ while (@ARGV > 0) {
     }
     if ($_ =~ /-D(.+)/) {
 	$_ = $1;
-	die "'$_' not macro[ =]val\n" unless /^(\w+)[ ](.*)/;
-	push @defines, "$1 $2"; # hash ?
+	die "'$_' not macro[ ]val\n" unless /^(\w+)[ ](.*)/;
+	push @defines, "$1 $2";
+	$macros{$1} = $2;
 	next
     }
     next if $_ eq '--build-in-place';
@@ -262,7 +263,7 @@ sub readspec()
 	my ($arref, $hashref) = ($_[0]->[0], $_[0]->[1]);
 
 	while (<I>) {
-	    s/#.*//;
+	    s/(#|%dnl\s).*//; # see %dnl commment in readlines() below...
 	    next if /^\s*$/;
 	    # %define should be handled differently (lazy eval) but...
 	    if (/^\s*%define\s+(\S+)\s+(.*?)\s*$/ or
@@ -314,6 +315,7 @@ sub readspec()
     sub readlines($)
     {
 	while (<I>) {
+	    s/%dnl\s.*//; # is this too heavy (/[^%]\K%dnl\s/ and perl 5.10+ ?)
 	    return if /^\s*%(\S+)/ && defined $stanzas{$1};
 	    push @{$_[0]}, eval_macros $_;
 	}
@@ -407,7 +409,7 @@ foreach (qw/license summary/) {
 
 # check that we have description and files for all packages
 # description and/or files sections that do not have packages
-# are just ignored (should we care ?=
+# are just ignored (should we care ?)
 
 foreach (@pkgnames) {
     die "No 'description' section for package '$_'\n"
@@ -900,6 +902,7 @@ foreach (@pkgnames)
 
 	_append(1124, 6, 1, "cpio\000"); # payloadfmt
 	_append(1125, 6, 1, "gzip\000"); # payloadcomp
+	_append(1126, 6, 1, "6\000");    # payloadflags
 
 	_append(1132, 6, 1, "$macros{_target_platform}\000"); # platform
 
@@ -917,7 +920,7 @@ foreach (@pkgnames)
 
     my $dhdr = createdataheader $npkg;
     my $cpiosize = -s $cpiofile;
-    system 'gzip', '-fn', $cpiofile;
+    system 'gzip', '-6fn', $cpiofile;
     my $ctx;
     $ctx = Digest->new('MD5'); $ctx->add($dhdr);
     open J, "$cpiofile.gz" or die $!; $ctx->addfile(*J); close J;
