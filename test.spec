@@ -11,12 +11,12 @@ License:     Unlicence
 Requires:    python
 BuildRequires: perl
 
-%dnl not yet supported by rrpmbuild.pl -- rpmbuild(1) used it
-%dnl in case of rpmbuild(1), file.spec overrides command line!
-%define _binary_payload w19.zstdio
+%dnl in case of rpmbuild(8), file.spec overrides command line!
+%define _binary_payload w19.zstdio %dnl \- both of these
+%global _binary_payload w0.xzdio
 
 %description
-use rpmbuild and rrpmbuild with this, see what comes out
+use rpmbuild and rrpmbuild with this, see what comes out;
 edit rigorousry at will...
 
 %prep

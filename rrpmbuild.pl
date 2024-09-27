@@ -20,6 +20,7 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
 # 02110-1301 USA
 
+use 5.8.1;
 use strict;
 use warnings;
 
@@ -417,6 +418,34 @@ foreach (@pkgnames) {
     die "No 'files' section for package '$_'\n"
       unless defined $files{$_};
 }
+
+my ($plflgs, $plsfx, @plcmpr_w_opts) = do {
+    $_ = $macros{_binary_payload} // '';
+    if ($_) {
+	die "_binary_payload '$_' does not match \\w\\d+\\w*[.]\\w+dio\n"
+	  unless /^\w(\d+)\w*[.](\w+)dio$/;
+	if ($2 eq 'gz') {
+	    die "_binary_payload gzip level '$1' < 1\n" if $1 < 1;
+	    die "_binary_payload gzip level '$1' > 9\n" if $1 > 9;
+	    ($1,'gz', 'gzip', "-$1fn")
+	}
+	elsif ($2 eq 'xz') {
+	    die "_binary_payload xz level '$1' > 9\n" if $1 > 9;
+	    ($1,'xz', 'xz', "-$1f")
+	}
+	elsif ($2 eq 'zst') {
+	    die "_binary_payload zstd level '$1' > 19\n" if $1 > 19;
+	    $ENV{ZSTD_CLEVEL} = $1; # yeah right ;/
+	    ($1,'zst', 'zstd', "-$1f", '--rm')
+	}
+	else { # to lazy to add 'bz' & 'lz' ('uf' needs more (or cat(1)))
+	    die "_binary_payload compressor '$2' not supported\n"
+	}
+    }
+    else { ('6','gz', 'gzip', '-6fn') }
+};
+
+#die "($plcmpr, $plflgs, $plopt)\n";
 
 sub execute_stage($$)
 {
@@ -901,8 +930,8 @@ foreach (@pkgnames)
 	_append(1118, 8, $count, join("\000", @dirs) . "\000");
 
 	_append(1124, 6, 1, "cpio\000"); # payloadfmt
-	_append(1125, 6, 1, "gzip\000"); # payloadcomp
-	_append(1126, 6, 1, "6\000");    # payloadflags
+	_append(1125, 6, 1, "$plcmpr_w_opts[0]\000"); # payloadcomp
+	_append(1126, 6, 1, "$plflgs\000"); # payloadflags
 
 	_append(1132, 6, 1, "$macros{_target_platform}\000"); # platform
 
@@ -920,16 +949,19 @@ foreach (@pkgnames)
 
     my $dhdr = createdataheader $npkg;
     my $cpiosize = -s $cpiofile;
-    system 'gzip', '-6fn', $cpiofile;
+    my $cpiofile_zz = "$cpiofile.$plsfx";
+    unlink $cpiofile_zz;
+    system(@plcmpr_w_opts, $cpiofile) == 0
+	or die "'@plcmpr_w_opts $cpiofile' failed\n";
     my $ctx;
     $ctx = Digest->new('MD5'); $ctx->add($dhdr);
-    open J, "$cpiofile.gz" or die $!; $ctx->addfile(*J); close J;
+    open J, $cpiofile_zz or die $!; $ctx->addfile(*J); close J;
     my $md5 = $ctx->digest;
     $ctx = Digest->new('SHA-1'); $ctx->add($dhdr);
     my $sha1 = $ctx->hexdigest;
     $ctx = Digest->new('SHA-256'); $ctx->add($dhdr);
     my $sha256 = $ctx->hexdigest;
-    my $shdr = createsigheader length($dhdr) + -s "$cpiofile.gz",
+    my $shdr = createsigheader length($dhdr) + -s $cpiofile_zz,
                                $md5, $sha1, $sha256, $cpiosize;
     open STDOUT, '>', "$pkgfbase.rpm.wip" or die $!;
     $| = 1;
@@ -937,7 +969,7 @@ foreach (@pkgnames)
     print pack 'NCCnnZ66nnZ16', 0xedabeedb, 3, 0, $building_src_pkg,
 	$arch_canon, $leadname, $os_canon, 5, "\0";
     print $shdr, $dhdr;
-    system('/bin/cat' ,"$cpiofile.gz");
+    system('/bin/cat', $cpiofile_zz);
     open STDOUT, ">&STDERR" or die $!;
     rename "$pkgfbase.rpm.wip", "$pkgfbase.rpm" or die $!;
     print "Wrote '$pkgfbase.rpm'\n";
