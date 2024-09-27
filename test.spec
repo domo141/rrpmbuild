@@ -12,7 +12,7 @@ Requires:    python
 BuildRequires: perl
 
 %dnl in case of rpmbuild(8), file.spec overrides command line!
-%define _binary_payload w19.zstdio %dnl \- both of these
+%define _binary_payload w19T.zstdio%dnl \- both of these
 %global _binary_payload w0.xzdio
 
 %description
