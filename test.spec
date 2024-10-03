@@ -38,6 +38,7 @@ set -eufx
 :
 : _target_cpu %_target_cpu
 : _host_cpu %_host_cpu
+: buildroot %buildroot
 :
 : ^^ build ^^ :
 exit

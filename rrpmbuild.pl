@@ -26,6 +26,7 @@ use warnings;
 
 use Fcntl ':mode';
 use File::Find;
+use POSIX qw/getcwd/;
 
 use Digest;
 
@@ -210,8 +211,12 @@ sub eval_macros($)
 my ($instroot, $instrlen);
 sub rest_macros()
 {
-    $instroot =
-      $building_src_pkg? '.': "$rpmdir/br--$macros{_target_platform}";
+    if ($building_src_pkg) {
+	$instroot = '.'
+    } else {
+	$instroot = "$rpmdir/br--$macros{_target_platform}";
+	$instroot = getcwd . '/' . $instroot unless ord($rpmdir) == 47 # '/'
+    }
     $instrlen = length $instroot;
 
     $ENV{'RPM_BUILD_ROOT'} = $instroot;
