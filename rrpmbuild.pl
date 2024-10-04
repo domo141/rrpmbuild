@@ -192,19 +192,17 @@ sub init_macros()
 
 sub eval_macros($)
 {
-    my ($m, $rest) = split '#', $_[0], 2;
+    my $m = $_[0];
 
     sub _eval_it() {
-	return '%' if $1 eq '%';
 	return $macros{$1} if defined $macros{$1};
-	die "'$1': undefined macro\n";
+	return $1;
     }
 
     #    s/%%/\001/g;
     # dont be too picky if var is in format %{foo or %foo} ;) (i.e fix ltr)
     $m =~ s/%\{?(%|[\w\?\!]+)\}?/_eval_it/ge;
     #    s/\001/%/g;
-    return $m . '#' . $rest if defined $rest;
     return $m;
 }
 
