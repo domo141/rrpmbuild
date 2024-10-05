@@ -8,7 +8,7 @@
 #	    All rights reserved
 #
 # Created: Tue 01 Oct 2024 20:15:45 EEST too
-# Last modified: Thu 03 Oct 2024 17:52:07 +0300 too
+# Last modified: Sat 05 Oct 2024 15:38:12 +0300 too
 
 case ${BASH_VERSION-} in *.*) set -o posix; shopt -s xpg_echo; esac
 case ${ZSH_VERSION-} in *.*) emulate ksh; esac
@@ -20,13 +20,7 @@ die () { printf '%s\n' '' "$@" ''; exit 1; } >&2
 x () { printf '+ %s\n' "$*" >&2; "$@"; }
 x_exec () { printf '+ %s\n' "$*" >&2; exec "$@"; exit not reached; }
 
-test "${UID-}" || UID=`id -u`
-test "$UID" = 0 && die 'Do not run as root'
-
-command -v rpm >/dev/null && rpme=true || rpme=false
-$rpme || printf %s\\n '' 'NOTE: rpm(1) does not exist' >&2
-
-v=1
+v=11
 r=1.usw
 
 test $# -gt 0 || die "Usage: ${0##*/} {rootdir}
@@ -36,23 +30,23 @@ packages elsewhere than system directories.
 There may also be need/desire to install as non-root user.
 
 Enter rootdir where to install a system where such a thing can be achieved;
-this will create user-sw-$v-${r}XX-noarch.rpm and install it in {rootdir};
-after installation, {rootdir}/bin will contain usw, rrpmbuild.pl and rpmpeek.pl
+this will create user-sw-$v-${r}XX-noarch.rpm and bootstrap-user-sw-uswXX.sh.
 
-Add {rootdir}/bin to PATH and then execute 'usw' to manage the env there."
+bootstrap-user-sw-uswXX.sh needed to populate {rootdir} (with a few dirs)
+and then install user-sw-$v-${r}XX-noarch.rpm package there. After that
+the 'usw' tool in {rootdir}/bin/ can be used to install more packages
+(also new version of user-sw if such is made (with ${0##*/}) available).
 
-$rpme || die 'Need rpm(1) for this to be useful'
+After bootstrapping one can either add {rootdir}/bin to PATH, symlink 'usw'
+elsewhere in PATH -- or access the content in {rootdir}/ any other way...
+
+The 'XX' part in the names above is 2 first hexdigits of the sha256 digest
+of the installation directory. That is used to check a bit that a package
+that is being installed probably installs files in expected fs hierarchy."
 
 case $1 in *["$IFS"]*) die "Whitespace in '$1'"; esac
 
-test -d "$1" || die "Create '$1' first"
-
-duid=`stat -c %u "$1"`
-test "$duid" = "$UID" || die "Directory '$1' owner '$duid' not '$UID'"
-
-test "`cd "$1" && find .`" = '.' || die "Directory '$1' not empty"
-
-rp1=`realpath -s "$1"` # keep symlinks, user responsibility
+rp1=`realpath -ms "$1"`
 
 case $rp1 in *["$IFS"]*) die "Whitespace in '$rp1'"; esac
 
@@ -61,29 +55,25 @@ ch2=${ch2%${ch2#??}} # 2 first chars, for a bit of compatibility checking
 
 r=$r$ch2
 
-chi=.usw$ch2
+chi=usw$ch2
 
-vlrd=var/lib/rpm
-vcrd=var/cache/rpm
-(cd "$1" && printf 'pwd: ' && pwd && x_exec mkdir -p tmp/bstr $vlrd $vcrd)
+user_sw_rpm=user-sw-$v-$r.noarch.rpm
 
-(
-  rp0=`realpath "$0"`
-  dn=${rp0%/*}
-  test -f $dn/rrpmbuild.pl && ddn=$dn || ddn=${rp0%/*/*}
-  cp $ddn/rrpmbuild.pl $ddn/rpmpeek.pl "$1"/tmp/bstr
-  exec \
-  sed	-e 's/.*exit.*install-me-first.*/#/' \
-	-e "/rootdir=/ s =.* =$rp1 " -e "/chi=/ s/=.*/=$chi/" \
-  $dn/usw-tmpl.sh > "$1"/tmp/bstr/usw
-)
-(
-  rd=`realpath "$1"`
-  cd "$rd"/tmp/bstr
-  rdr=${rd#/}
-  echo > usw.spec "
+if test -f "$user_sw_rpm"
+then  echo "'$user_sw_rpm' exists. Doing bootstrap...sh (only)"
+else
+ vlrd=var/lib/rpm
+ vcrd=var/cache/rpm
+
+ td=`mktemp -d`
+ trap "rm -rf $td" 0
+ (
+   rp0=`realpath "$0"`
+   dn0=${rp0%/*}
+   ddn0=${rp0%/*/*}
+   echo > $td/usw.spec "
 Name: user-sw
-Summary: user sw in $rdr
+Summary: user sw in $dn0
 Version: $v
 Release: $r
 License: LGPL v2.1
@@ -99,25 +89,74 @@ exit 0
 exit 0
 
 %install
-mkdir -p %buildroot/$rdr/bin
-cp rrpmbuild.pl rpmpeek.pl usw %buildroot/$rdr/bin
+mkdir -p %buildroot/$rp1/bin
+cp $ddn0/rrpmbuild.pl $ddn0/rpmpeek.pl %buildroot/$rp1/bin
+sed	-e 's/.*exit.*install-me-first.*/#/' \
+	-e '/rootdir=/ s =.* =$rp1 ' -e '/chi=/ s/=.*/=.$chi/' \
+	$dn0/usw-tmpl.sh > %buildroot/$rp1/bin/usw
+
 set +f
-cd %buildroot/$rdr/bin
+cd %buildroot/$rp1/bin
 exec chmod 755 *
 
 %files
 %defattr/-,root,root,-)
-$rd/
+$rp1/
 "
-  printf 'pwd: '; pwd
-  x_exec perl rrpmbuild.pl -bb usw.spec
-)
+   cd $td
+   printf 'pwd: '; pwd
+   x_exec perl $ddn0/rrpmbuild.pl -bb usw.spec
+ )
 
-( cd "$1" && printf 'pwd: ' && pwd && set -x &&
-  mv tmp/bstr/build-rpms/user-sw-$v-$r.noarch.rpm var/cache/rpm &&
-  exec rpm --dbpath $PWD/var/lib/rpm -ivh var/cache/rpm/user-sw-$v-$r.noarch.rpm
-)
+ printf 'pwd: '; pwd
+ mv $td/build-rpms/$user_sw_rpm .
 
-printf 'pwd: '; pwd
-x rm -rf $1/tmp/bstr
-x_exec find $1
+ rm -rf $td
+ trap - 0
+fi
+
+bf=bootstrap-user-sw-$chi.sh
+sed -ne 1d -e '/^#!\/bin\/sh/,$ {
+	'"s %d $1 ; s/%rpm/$user_sw_rpm/; p; }" "$0" > $bf
+chmod 755 $bf
+
+echo Use:
+
+x_exec ls -goU $user_sw_rpm $bf
+
+exit 0
+---- bootstrap code ----
+#!/bin/sh
+
+die () { printf '%s\n' '' "$@" ''; exit 1; } >&2
+
+test "${UID-}" || UID=`id -u`
+test "$UID" = 0 && die 'Do not run this as root'
+
+command -v rpm >/dev/null || die 'Need rpm(1) for this to be useful'
+
+test $# = 1 || die "Usage: ${0##*/} path/to/%rpm"
+
+case $1 in %rpm)
+	;; */%rpm)
+	;; *) die "'$1' is not path to file named %rpm"
+esac
+
+test -f "$1" || die "'$1': no such file"
+
+d=%d
+
+test -d "$d" || die "Create '$d' first"
+
+duid=`stat -c %u "$d"`
+test "$duid" = "$UID" || die "Directory '$d' owner '$duid' not '$UID'"
+
+test "`cd "$d" && find . -maxdepth 1`" = '.' || die "Directory '$d' not empty"
+
+set -x
+
+(cd "$d" && exec mkdir bin tmp var var/lib var/lib/rpm var/cache var/cache/rpm)
+
+rpm --dbpath=%d/var/lib/rpm -ivh "$1"
+
+find %d | sort

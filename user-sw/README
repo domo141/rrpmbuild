@@ -1,33 +1,37 @@
 
-Quick commit to add handling of rpm packages in non-rootspace, e.g.
-under one's $HOME/.local[/share]/user-sw/ ...
+Quick commit to add handling of rpm packages in non-rootspace,
+e.g. under one's $HOME/.local[/share]/user-sw/ ...
 
-... but since the path is somewhat significant the examples here
-use /home/user-sw/ as "usw root dir".
+... but since the path is somewhat significant, the path
+/home/user-sw/ is used as "usw root dir" in the examples here.
 
-One can tar the required files by running ./tar-mkusw.sh '!'
-- that creates an archive named user-sw-yyyymmdd-hhmm.tar.xz
-  which then can me copied to some other host, extract there
-  and continue along the following lines:
+To start, executing; ./mk-usw.sh /home/user-sw ;: creates two files:
+
+  user-sw-{v}-1.usw51.noarch.rpm
+  bootstrap-user-sw-usw51.sh
+
+These files can be copied around, or used at the spot.
+
+On the target host, execute
 
 $ sudo mkdir /home/user-sw/
 $ sudo chown $USER:$USER /home/user-sw/
-$ ./mk-usw.sh /home/user-sw
+$ ./bootstrap-user-sw-usw51.sh user-sw-{v}-1.usw51.noarch.rpm
 
 That creates:
   /home/user-sw/var/lib/rpm/*
-  /home/user-sw/var/cache/rpm/user-sw-1-1.usw51.noarch.rpm
+  /home/user-sw/var/cache/rpm/user-sw-{v}-1.usw51.noarch.rpm
   /home/user-sw/bin/rpmpeek.pl
   /home/user-sw/bin/rrpmbuild.pl
   /home/user-sw/bin/usw
 
-Note, the '51' part in user-sw-1-1.usw51.noarch.rpm comes from
+Note, the '51' part in user-sw-{v}-1.usw51.noarch.rpm comes from
 the first 2 octets of; printf %s /home/user-sw | sha256sum
 
-The idea there is that all pkgs with .usw51. in its name will
-install everything under that hierarchy (*). The commands
-`usw rpmi`, `usw rpmu` and `usw spec` commands enforce or help
-achieving that.
+The idea there is that all pkgs with .usw51. in its name one creates
+is expected to install everything under that hierarchy (*).
+The commands `usw rpmi`, `usw rpmu` and `usw spec` commands enforce
+or help achieving that.
 
 (*) it's 1/256 than some other get the same (and if one chose 16
     random paths, there would 50% chance for any 2 of those to
@@ -38,13 +42,11 @@ Run; /home/user-sw/bin/usw ;: to see what commands `usw` provides...
 Then either add /home/user-sw/bin/ to PATH, or symlink commands
 from there to some other path in system
 (I just did ; ln -sf /home/user-sw/bin/usw ~/bin ;: and I have to
- keep doing that to dogfood keeping it functional)
+ keep doing that to dogfood keeping it functional).
 
-If one chose another dir, e.g. in my case /home/too/.local/share/user-sw/.
+If one chose another dir, e.g. in my case /home/too/.local/share/user-sw/.,
 I got *.usw77.* as an "identifier". Installation showed that /./ in paths
 (e.g. /home/too/.local/share/user-sw/./tmp) but final ..././bin/usw had
-that removed -- `realpath -s` is used to make absolute, cleaned up path,
-but symbolic links *not* resolved -- one may need to have the final
-directory referenced via symbolic link, and it is user's responsibility
-to make it working should there be symlink in place (like in any other
-case).
+that removed -- `realpath -ms` in mk-use.sw cleans that up. The path
+in target host where user-sw bootstrapped may be symbolic link to
+somewhere else and things should work as expected.
