@@ -8,7 +8,7 @@
 #	    All rights reserved
 #
 # Created: Tue 01 Oct 2024 20:15:45 EEST too
-# Last modified: Sat 05 Oct 2024 15:38:12 +0300 too
+# Last modified: Sat 05 Oct 2024 19:11:06 +0300 too
 
 case ${BASH_VERSION-} in *.*) set -o posix; shopt -s xpg_echo; esac
 case ${ZSH_VERSION-} in *.*) emulate ksh; esac
@@ -25,7 +25,7 @@ r=1.usw
 
 test $# -gt 0 || die "Usage: ${0##*/} {rootdir}
 
-Imagine you have a system which has rpm(1), but one needs to install
+Imagine you have a system which has rpm(8), but one needs to install
 packages elsewhere than system directories.
 There may also be need/desire to install as non-root user.
 
@@ -133,7 +133,7 @@ die () { printf '%s\n' '' "$@" ''; exit 1; } >&2
 test "${UID-}" || UID=`id -u`
 test "$UID" = 0 && die 'Do not run this as root'
 
-command -v rpm >/dev/null || die 'Need rpm(1) for this to be useful'
+command -v rpm >/dev/null || die 'Need rpm(8) for this to be useful'
 
 test $# = 1 || die "Usage: ${0##*/} path/to/%rpm"
 
