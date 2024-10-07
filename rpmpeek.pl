@@ -3,24 +3,25 @@
 # http://www.rpm.org/max-rpm/s1-rpm-file-format-rpm-file-format.html
 # http://docs.fedoraproject.org/drafts/rpm-guide-en/ch-package-structure.html
 
+use 5.8.1;
 use strict;
 use warnings;
 
 $" = ', ';
 
-my ($extract, $cfv) = (0, '');
+my $extract = 0;
 if (defined $ARGV[0]) {
     $extract = 1, shift @ARGV if $ARGV[0] eq '-x';
-    $cfv = 'v', shift @ARGV if $ARGV[0] eq '-v';
 }
 
-die "Usage: $0 [-(x|v)] file.rpm\n" unless defined $ARGV[0];
+die "Usage: $0 [-x] file.rpm\n" unless defined $ARGV[0];
 
 open I, '<', $ARGV[0] or die "Cannot open '$ARGV[0]': $!.\n";
 
 my ($headerfile, $filesdir);
 if ($extract) {
     ($headerfile = $ARGV[0]) =~ s/.rpm$//;
+    $headerfile =~ s,.*/,,; # basename
     sub _otw($) {
 	die "Cannot extract: '$_[0]' is on the way.\n" if -e $_[0];
     }
@@ -223,7 +224,7 @@ my @dtcalls = (
     \&dt6_string, \&dt7_bin, \&dt8_strarr, \&dt9_string_i18n
 );
 
-my ($plfmt, $plcomp) = ('cpio', 'gzip');
+my ($plfmt, $plcomp) = ('cpio', '');
 sub chkdatahdr($$)
 {
     if ($_[0] eq '1124') { # 'PAYLOADFORMAT'
@@ -277,23 +278,14 @@ readpad8;
 readheader 0;
 
 # XXX --no-absolute-filenames is gnu cpio extension...
-my $cpiocmd = $extract?
-  "(cd '$filesdir'; cpio -idv --no-absolute-filenames --quiet)":
-  "cpio -it$cfv --quiet";
+my $cpioxcmd = "cpio -idv --no-absolute-filenames --quiet";
 
-# Check if 'xcpio' is available at the same directory as this command.
-$_ = $0;
-s:/[^/]+$::;
-$_ = '.' if $_ eq $0;
-if (-x "$_/xcpio") {
-    $cpiocmd = $extract? "$_/xcpio -x -C '$filesdir'": "$_/xcpio -$cfv";
-}
-
-my %plfmtcmds = ( cpio => $cpiocmd );
+my %plfmtcmds = ( cpio => $cpioxcmd ); # (still) used when extracting...
 my %plcompcmds = ( gzip => 'gzip -dc',
 		   bzip2 => 'bzip2 -dc',
 		   xz => 'xz -dc',
-		   zstd => 'zstd -dc');
+		   zstd => 'zstd -dc',
+		   '' => 'cat' );
 
 my $plfmtcmd = $plfmtcmds{$plfmt};
 die "'$plfmt': not known playload format\n" unless defined $plfmtcmd;
@@ -308,17 +300,59 @@ else {
     print "\nArchive contents (at $tlen):\n";
 }
 
-# for windows msys perl 5.6
+# from times these lines were needed for (windows msys) perl 5.6
 use POSIX qw/lseek/;
 my $fd = fileno I;
 lseek($fd, $tlen, 0); # to reset buffered data.
-open STDIN, "<&$fd"; # for perl 5.6, and windows msys.
+open STDIN, "<&$fd"; # for perl 5.6, and windows msys (ditto).
 
-# this works elsewhere...
+# this works elsewhere... (could change maeby later...)
 #seek I, $tlen, 0 or die "$!"; # to reset buffered data.
 #open STDIN, '<&=', \*I;
 #open STDIN, '<&', \*I;
 #open STDIN, '<&I'; # for perl 5.6
 
 #system "set -x; $plcompcmd | $plfmtcmd";
-system "$plcompcmd | $plfmtcmd";
+exec "$plcompcmd | $plfmtcmd" if $extract;
+
+# ...this construct requires perl 5.8.1
+
+open P, '-|', split / /, $plcompcmd or die $!;
+
+# for hex decoding to exit prg
+$SIG{__WARN__} = sub { $_ = $_[0]; chomp; die $_, " (and exit)\n" };
+
+my $l;
+
+sub drop($) {
+    my $t = $_[0];
+    do {
+	my $rl = $t > 524288? 524288: $t;
+	$l = read P, $_, $rl;
+	die "Cannot read (and drop) $rl bytes of data\n" unless $l == $rl;
+	$t -= $rl;
+    } while ($t > 0);
+}
+
+while (($l = read P, $_, 110) == 110) {
+    my ($ma, $i, $m, $u, $g, $lc, $t, $s, $dma, $dmi, $rma, $rmi, $ns, $c)
+	= unpack('A6A8A8A8A8A8A8A8A8A8A8A8A8A8');
+    die "'$ma' not '070701'\n" unless $ma eq '070701';
+    $ns = hex $ns;
+    $l = read P, $_, $ns;
+    die "Could not read file name ($ns bytes)\n" unless $l == $ns;
+    chop; # trailing \0 in file name
+    $s = hex $s;
+    printf "%4d %6o %4d %4d %3d %8d %s\n",
+	hex $i, hex $m, hex $u, hex $g, hex $lc, $s, $_;
+    $ns = ($ns + 2) & 3;
+    $ns = 4 - $ns if $ns;
+
+    if ($ns or $s) {
+	$s += 4 - ($s & 3) if $s & 3;
+	$s += $ns;
+	drop $s;
+    }
+}
+close P;
+die "Short read ($l bytes)\n" if $l;
