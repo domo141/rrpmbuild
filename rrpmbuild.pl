@@ -499,8 +499,9 @@ sub file_to_cpio($$$)
     $hdrbytes += 4 - ($hdrbytes & 0x03) if ($hdrbytes & 0x03);
     # Type: New ASCII without crc (070701). See librachive/cpio.5
     syswrite STDOUT, sprintf
-      ("070701%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x00000000%s\000\000\000\000", $ino, $mode,0,0, $nlink, $mtime, $size, 0,0,0,0, $namesize, $name),
-	$hdrbytes;
+      ("070701%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x00000000%s\0\0\0\0",
+       $ino++, $mode,0,0, $nlink, $mtime, $size, 0,0,0,0, $namesize, $name),
+	 $hdrbytes;
 
     $cpio_dsize += $size, system ('/bin/cat', $file) if $size;
     if ($size & 0x03) {
