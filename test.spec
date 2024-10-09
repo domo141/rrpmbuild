@@ -8,7 +8,7 @@ Version:     1
 Release:     1
 License:     Unlicence
 #Buildarch:   noarch
-Requires:    python
+#Requires:    python
 BuildRequires: perl
 
 %dnl in case of rpmbuild(8), file.spec overrides command line!
@@ -52,6 +52,10 @@ set -eufx
 umask 022
 mkdir -p %{buildroot}/tmp
 cp test.spec %{buildroot}/tmp
+echo other > %{buildroot}/tmp/toinenkin
+echo kikka > %{buildroot}/tmp/kuutonen
+echo aito > %{buildroot}/tmp/aamu
+(cd %{buildroot}/tmp && exec ln test.spec hlnk.spec)
 : ^^ install ^^ :
 
 %pre
@@ -86,4 +90,4 @@ set -eufx
 
 %files
 %defattr(-,root,root,-)
-/tmp/test.spec
+/tmp/*

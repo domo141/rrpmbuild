@@ -8,7 +8,7 @@
 #	    All rights reserved
 #
 # Created: Tue 01 Oct 2024 20:15:45 EEST too
-# Last modified: Sat 05 Oct 2024 19:11:06 +0300 too
+# Last modified: Wed 09 Oct 2024 22:32:17 +0300 too
 
 case ${BASH_VERSION-} in *.*) set -o posix; shopt -s xpg_echo; esac
 case ${ZSH_VERSION-} in *.*) emulate ksh; esac
@@ -20,7 +20,7 @@ die () { printf '%s\n' '' "$@" ''; exit 1; } >&2
 x () { printf '+ %s\n' "$*" >&2; "$@"; }
 x_exec () { printf '+ %s\n' "$*" >&2; exec "$@"; exit not reached; }
 
-v=11
+v=12
 r=1.usw
 
 test $# -gt 0 || die "Usage: ${0##*/} {rootdir}

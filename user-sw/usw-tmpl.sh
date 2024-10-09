@@ -6,7 +6,7 @@
 #	    All rights reserved
 test "$1" = '' && shift || exit install-me-first
 # Created: Tue 01 Oct 2024 20:30:50 EEST too
-# Last modified: Thu 03 Oct 2024 18:24:27 +0300 too
+# Last modified: Wed 09 Oct 2024 22:32:11 +0300 too
 
 case ${BASH_VERSION-} in *.*) set -o posix; shopt -s xpg_echo; esac
 case ${ZSH_VERSION-} in *.*) emulate ksh; esac
@@ -35,7 +35,7 @@ c=$1; shift
 
 
 #. rpm*  :run rpm command with dbpath pointing to usw
-#.        special cases: 'rpmi' 'rpmu' 'rpme' 'rpmqa' 'rpmqil' 'rpmqilp' 'rpmqf'
+#.        known cmds: 'rpmi' 'rpmu' 'rpme' 'rpmqa' 'rpmqil' 'rpmqilp' 'rpmqf'
 case $c in rpm*)
 	rpm="rpm --dbpath=$rootdir/var/lib/rpm"
 	test $c = rpmqa && {
@@ -88,7 +88,7 @@ Name: $1
 Summary: $1 summary
 Version: 1
 Release: 1$chi
-License: Unlicense
+#License: Fixme and uncomment
 #BuildArch: noarch
 
 %description
@@ -99,7 +99,8 @@ exit 0 %dnl prep not run anyway (rrpmbuild.pl does not)
 
 %build
 exit 0
-./configure --prefix=$rootdir
+# remove ''/tmp/x after known build/install does not accidentally write there
+./configure --prefix=$rootdir''/tmp/x
 make
 
 %install
