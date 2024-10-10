@@ -10,14 +10,35 @@ LANG=C LC_ALL=C; export LANG LC_ALL; unset LANGUAGE
 die () { printf '%s\n' '' "$@" ''; exit 1; } >&2
 
 x () { printf '+ %s\n' "$*" >&2; "$@"; }
+x_eval () { printf '+ %s\n' "$*" >&2; eval "$*"; }
+x_exec () { printf '+ %s\n' "$*" >&2; exec "$@"; }
+
+pfx_cmd=
+while	case ${1-}
+	in l) x_eval 'export LD_PRELOAD=$PWD/ldpreload-peek-memcmp.so'
+	;; p) test "${PFX_CMD-}" || die "PFX_CMD not defined in environment"
+	      pfx_cmd=$PFX_CMD
+	;; *) break
+	esac
+do
+	shift
+	continue
+done
+
+
+usage () { die "Usage: ${0##*/} $@"; }
 
 if test $# = 0
 then
 	echo
-	echo r[r]pmbuild test program
-	echo execute $0 {number} to test things:
+	echo '(r[r]pmbuild) test program'
+	echo "execute $0 [pfl...] {number} to test things:"
 	echo
 	sed -n 's/if[ ]test "$1" =/ /p' "$0"
+	echo
+	echo 'pfl: prefix letter to affect execution sometimes':
+	echo '  l: export LD_PRELOAD=$PWD/ldpreload-peek-memcmp.so'
+	echo '  p: prefix with trace command defined in PFX_CMD env var'
 	echo
 	exit
 fi
@@ -26,7 +47,7 @@ if test "$1" = 1 # run rrpmbuild -bb test.spec w/ all compressors and levels
 then
 	fn () {
 		script -ec "exec /usr/bin/time -p \
-		./rrpmbuild.pl -D '_binary_payload w$2.$1dio' -bb test.spec"
+		./rrpmbuild.pl -D '_binary_payload w$2.$1dio' -bb x/test.spec"
 		mv typescript build-rpms
 		mv build-rpms t1-build-rpms/$1-$2
 	}
@@ -45,7 +66,7 @@ then
 	test $# = 1 && { echo
 		echo choose a container image which has rpmbuild'(8)' below
 		exec podman images --format '{{.ID}}  {{.Repository}}:{{.Tag}}'
-	}
+	} >&2
 	ci=$2
 	shift 2
 	fn () {
@@ -55,11 +76,24 @@ then
 	}
 	rm -rf t2-build-rpms; mkdir t2-build-rpms
 	fn rpmbuild --build-in-place -D_rpmdir\ t2-build-rpms \
-	   -D '_binary_payload w3.gzdio' -bb test.spec
+	   -D '_binary_payload w3.gzdio' -bb x/test.spec
 	exit
 fi
 
-if test "$1" = 3 # exit 1 (i.e. placeholder)
+if test "$1" = 3 # install using /tmp/rrdbdd/ as dbpath (rm -rf'd first)
+then
+	test $# = 1 && usage "{file}.rpm"
+	case $2 in *.rpm) ;; *) die "'$2' does not end with '.rpm'" ;; esac
+	test -f "$2" || die "'$2': no such file"
+
+	rm -rf /tmp/rrdbdd
+	mkdir /tmp/rrdbdd
+	#pfx_cmd='ltrace -f -e memcmp'
+	x_exec $pfx_cmd rpm -ivh --dbpath=/tmp/rrdbdd "$2"
+fi
+
+
+if test "$1" = 9 # exit 1 (i.e. placeholder)
 then
 	x exit 1
 fi
