@@ -53,10 +53,11 @@ set -eufx
 : $0 :$#: "$@"
 umask 022
 mkdir -p %{buildroot}/%thedd
-cp test.spec %{buildroot}/%thedd
+cp x/test.spec %{buildroot}/%thedd
 echo other > %{buildroot}/%thedd/toinenkin
 echo kikka > %{buildroot}/%thedd/kuutonen
 echo aito > %{buildroot}/%thedd/aamu
+ln -s test.spec %{buildroot}/%thedd/slnk.spec
 (cd %{buildroot}/%thedd && exec ln test.spec hlnk.spec)
 : ^^ install ^^ :
 

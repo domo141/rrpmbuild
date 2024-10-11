@@ -478,21 +478,25 @@ sub open_cpio_file($)
     $cpio_dsize = 0;
 }
 
-# knows files & directories.
+# knows files, directories and symlinks (not jet)
 sub file_to_cpio($$$)
 {
     my ($name, $mode, $file) = @_;
-    my ($size, $mtime, $nlink);
+    my ($size, $mtime, $nlink, $fclass);
 
     if (defined $file) {
+	#my @sb = lstat $file or die "stat '$file': $!\n";
 	my @sb = stat $file or die "stat '$file': $!\n";
 	$mtime = ($sde eq '')? $sb[9]: $buildtime;
-	if (S_ISDIR($sb[2])) {
-	    $size = 0; $mode += 0040000; $nlink = 2;
+	if (S_ISLNK($sb[2])) {
+	    $size = 0; $mode = 0120777; $nlink = 1; $fclass = 2
 	}
-	else { $size = $sb[7]; $mode += 0100000; $nlink = 1; }
+	elsif (S_ISDIR($sb[2])) {
+	    $size = 0; $mode += 0040000; $nlink = 2; $fclass = 0
+	}
+	else { $size = $sb[7]; $mode += 0100000; $nlink = 1; $fclass = 1 }
     }
-    else { $mtime = 0; $size = 0; $mode = 0; $nlink = 1; }
+    else { $mtime = 0; $size = 0; $mode = 0; $nlink = 1; $fclass = 0 }
 
     my $namesize = length($name) + 1;
     my $hdrbytes = 110 + $namesize;
