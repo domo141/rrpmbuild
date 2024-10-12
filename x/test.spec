@@ -2,6 +2,8 @@
 # ./rrpmbuild.pl [opts] -bb test.spec
 # [podman run ...] rpmbuild [opts] --build-in-place -bb test.spec
 
+%define thedd tmp/rrtestdd
+
 Name:        test
 Summary:     make test pkg with just test.spec and echo things
 Version:     1
@@ -50,12 +52,13 @@ exit
 set -eufx
 : $0 :$#: "$@"
 umask 022
-mkdir -p %{buildroot}/tmp
-cp test.spec %{buildroot}/tmp
-echo other > %{buildroot}/tmp/toinenkin
-echo kikka > %{buildroot}/tmp/kuutonen
-echo aito > %{buildroot}/tmp/aamu
-(cd %{buildroot}/tmp && exec ln test.spec hlnk.spec)
+mkdir -p %{buildroot}/%thedd
+cp x/test.spec %{buildroot}/%thedd
+echo other > %{buildroot}/%thedd/toinenkin
+echo kikka > %{buildroot}/%thedd/kuutonen
+echo aito > %{buildroot}/%thedd/aamu
+ln -s test.spec %{buildroot}/%thedd/slnk.spec
+(cd %{buildroot}/%thedd && exec ln test.spec hlnk.spec)
 : ^^ install ^^ :
 
 %pre
@@ -90,4 +93,4 @@ set -eufx
 
 %files
 %defattr(-,root,root,-)
-/tmp/*
+/%thedd

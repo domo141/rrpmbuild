@@ -8,12 +8,14 @@
 #	    All rights reserved
 #
 # Created: Tue 01 Oct 2024 20:15:45 EEST too
-# Last modified: Wed 09 Oct 2024 22:32:17 +0300 too
+# Last modified: Fri 11 Oct 2024 19:55:16 +0300 too
 
 case ${BASH_VERSION-} in *.*) set -o posix; shopt -s xpg_echo; esac
 case ${ZSH_VERSION-} in *.*) emulate ksh; esac
 
 set -euf  # hint: (z|ba|da|'')sh -x thisfile [args] to trace execution
+
+LANG=C LC_ALL=C; export LANG LC_ALL; unset LANGUAG
 
 die () { printf '%s\n' '' "$@" ''; exit 1; } >&2
 
@@ -30,12 +32,12 @@ packages elsewhere than system directories.
 There may also be need/desire to install as non-root user.
 
 Enter rootdir where to install a system where such a thing can be achieved;
-this will create user-sw-$v-${r}XX-noarch.rpm and bootstrap-user-sw-uswXX.sh.
+this will create user-sw-$v-${r}XX-noarch.rpm and bootstrap-user-sw-uswXX.sh
 
 bootstrap-user-sw-uswXX.sh needed to populate {rootdir} (with a few dirs)
 and then install user-sw-$v-${r}XX-noarch.rpm package there. After that
 the 'usw' tool in {rootdir}/bin/ can be used to install more packages
-(also new version of user-sw if such is made (with ${0##*/}) available).
+(also new version of user-sw if such is made (with ${0##*/}) available)
 
 After bootstrapping one can either add {rootdir}/bin to PATH, symlink 'usw'
 elsewhere in PATH -- or access the content in {rootdir}/ any other way...
@@ -49,6 +51,8 @@ case $1 in *["$IFS"]*) die "Whitespace in '$1'"; esac
 rp1=`realpath -ms "$1"`
 
 case $rp1 in *["$IFS"]*) die "Whitespace in '$rp1'"; esac
+
+test "$1" = "$rp1" || echo rootdir: $rp1
 
 ch2=`printf %s "$rp1" | sha256sum`
 ch2=${ch2%${ch2#??}} # 2 first chars, for a bit of compatibility checking
