@@ -165,20 +165,19 @@ sub init_macros()
     %macros =
       ( _prefix => $prefix,
 	_exec_prefix => $exec_prefix,
-	_exec_prefix => $exec_prefix,
-	_bindir => $exec_prefix . '/bin',
-	_sbindir => $exec_prefix . '/sbin',
-	_libexecdir => $exec_prefix . '/libexec',
-	_datadir => $prefix . '/share',
-	_sysconfdir => $prefix . '/etc',
-	_sharedstatedir => $prefix . '/com',
-	_localstatedir => $prefix . '/var',
+	_bindir => '%_exec_prefix/bin',
+	_sbindir => '%_exec_prefix/sbin',
+	_libexecdir => '%_exec_prefix/libexec',
+	_datadir => '%_prefix/share',
+	_sysconfdir => '%_prefix/etc',
+	_sharedstatedir => '%_prefix/com',
+	_localstatedir => '%_prefix/var',
 	_lib => $lib,
-	_libdir => $exec_prefix . '/' . $lib,
-	_includedir => $prefix . '/include',
+	_libdir => '%_exec_prefix/%_lib',
+	_includedir => '%_prefix/include',
 	_oldincludedir => '/usr/include',
-	_infodir => $prefix . '/info',
-	_mandir => $prefix . '/man',
+	_infodir => '%_prefix/info',
+	_mandir => '%_prefix/man',
 	_host_cpu => $host_arch,
 	_host_os => $host_os,
 	_target_cpu => $target_arch,
@@ -190,25 +189,30 @@ sub init_macros()
 	setup => 'echo no %prep' );
 }
 
+sub _eval_macros($)
+{
+    sub _eval_it() {
+	return $macros{$1} if defined $macros{$1};
+	return '%'.$1;
+    }
+    #    s/%%/\001/g;
+    # dont be too picky if var is in format %{foo or %foo} ;) (i.e fix ltr)
+    $_[0] =~ s/%\{?(%|[\w\?\!]+)\}?/_eval_it/ge;
+    #    s/\001/%/g;
+}
+
 sub eval_macros($)
 {
     my $m = $_[0];
-
-    sub _eval_it() {
-	return $macros{$1} if defined $macros{$1};
-	return $1;
-    }
-
-    #    s/%%/\001/g;
-    # dont be too picky if var is in format %{foo or %foo} ;) (i.e fix ltr)
-    $m =~ s/%\{?(%|[\w\?\!]+)\}?/_eval_it/ge;
-    #    s/\001/%/g;
+    _eval_macros($m);
     return $m;
 }
 
 my ($instroot, $instrlen);
 sub rest_macros()
 {
+    _eval_macros $_ foreach (values %macros);
+
     if ($building_src_pkg) {
 	$instroot = '.'
     } else {
@@ -632,7 +636,8 @@ foreach (@pkgnames)
     my ($deffmode, $defdmode, $defuname, $defgname) = qw/-1 -1 root root/;
 
     LINE: foreach (@{$files{$npkg}}) {
-	($fmode, $dmode, $uname, $gname) = ($deffmode, $defdmode, $defuname, $defgname);
+	($fmode, $dmode, $uname, $gname) = ($deffmode, $defdmode,
+					    $defuname, $defgname);
 	my ($isdir, $isconfig, $isdoc) = (0, 0, 0);
 	while (1) {
 	    if (s/\001(def)?attr\001\((.+?)\)//) {
