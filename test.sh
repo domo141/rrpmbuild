@@ -91,7 +91,7 @@ then
 	rm -rf /tmp/rrdbdd
 	mkdir /tmp/rrdbdd
 	#pfx_cmd='ltrace -f -e memcmp'
-	x_exec $pfx_cmd rpm -ivh --dbpath=/tmp/rrdbdd "$2"
+	x_exec $pfx_cmd rpm -ivh --nodeps --dbpath=/tmp/rrdbdd "$2"
 fi
 
 

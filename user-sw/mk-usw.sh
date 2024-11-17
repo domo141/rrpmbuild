@@ -15,7 +15,7 @@ case ${ZSH_VERSION-} in *.*) emulate ksh; esac
 
 set -euf  # hint: (z|ba|da|'')sh -x thisfile [args] to trace execution
 
-LANG=C LC_ALL=C; export LANG LC_ALL; unset LANGUAG
+LANG=C LC_ALL=C; export LANG LC_ALL; unset LANGUAGE
 
 die () { printf '%s\n' '' "$@" ''; exit 1; } >&2
 
