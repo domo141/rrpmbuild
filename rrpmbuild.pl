@@ -480,16 +480,19 @@ sub open_cpio_file($)
     $cpio_dsize = 0;
 }
 
-# knows files & directories.
+# knows files, directories and symlinks (not adding fileclass (yet))
 sub file_to_cpio($$$)
 {
     my ($name, $mode, $file) = @_;
     my ($size, $mtime, $nlink);
 
     if (defined $file) {
-	my @sb = stat $file or die "stat '$file': $!\n";
+	my @sb = lstat $file or die "lstat '$file': $!\n";
 	$mtime = ($sde eq '')? $sb[9]: $buildtime;
-	if (S_ISDIR($sb[2])) {
+	if (S_ISLNK($sb[2])) {
+	    $size = $sb[7]; $mode = 0120777; $nlink = 1;
+	}
+	elsif (S_ISDIR($sb[2])) {
 	    $size = 0; $mode += 0040000; $nlink = 2;
 	}
 	else { $size = $sb[7]; $mode += 0100000; $nlink = 1; }
@@ -505,11 +508,20 @@ sub file_to_cpio($$$)
        $ino++, $mode,0,0, $nlink, $mtime, $size, 0,0,0,0, $namesize, $name),
 	 $hdrbytes;
 
-    $cpio_dsize += $size, system ('/bin/cat', $file) if $size;
+    my $slnk = '';
+    if ($size) {
+	$cpio_dsize += $size;
+	if ($mode == 0120777) {
+	    $slnk = readlink $file;
+	    syswrite STDOUT, $slnk;
+	} else {
+	    system ('/bin/cat', $file)
+	}
+    }
     if ($size & 0x03) {
 	syswrite STDOUT, "\000\000\000", 4 - ($size & 0x03);
     }
-    return ($mode, $size, $mtime);# if wantarray;
+    return ($mode, $size, $mtime, $slnk);# if wantarray;
 }
 
 sub close_cpio_file()
@@ -676,11 +688,11 @@ foreach (@pkgnames)
     }
 
     # Ditto.
-    our (@files, @dirindexes, @dirs, %dirs, @modes, @sizes, @mtimes);
+    our (@files, @dirindexes, @dirs,%dirs, @modes, @sizes, @mtimes, @flntos);
     our (@unames, @gnames, @md5sums);
-    local (@files, @dirindexes, @dirs, %dirs, @modes, @sizes, @mtimes);
+    local (@files, @dirindexes, @dirs,%dirs, @modes, @sizes, @mtimes, @flntos);
     local (@unames, @gnames, @md5sums);
-    sub add2lists($$$$$$$)
+    sub add2lists($$$$$$$$)
     {
 	sub getmd5sum($)
 	{
@@ -704,12 +716,15 @@ foreach (@pkgnames)
 	push @modes, $_[1];
 	push @sizes, $_[2];
 	push @mtimes, $_[3];
-	push @unames, $_[4];
-	push @gnames, $_[5];
-	if (-f $_[6]) {
-	    push @md5sums, getmd5sum $_[6];
+	if ($_[4]) {
+	    $flntos[$#mtimes] = $_[4]
 	}
-	else { push @md5sums, ''; }
+	push @unames, $_[5];
+	push @gnames, $_[6];
+	if (! $_[4] and -f $_[7]) {
+	    push @md5sums, getmd5sum $_[7]
+	}
+	else { push @md5sums, '' }
     }
 
     #warn 'XXXX 3 ', \@filelist, ' ', "@filelist", "\n";
@@ -758,8 +773,8 @@ foreach (@pkgnames)
     open_cpio_file $cpiofile;
     my $sizet = 0;
     foreach (sort { $a->[0] cmp $b->[0] } @filelist) {
-	my ($mode, $size, $mtime) = file_to_cpio($_->[0], $_->[1], $_->[4]);
-	add2lists($_->[0], $mode, $size, $mtime, $_->[2], $_->[3], $_->[4]);
+	my ($mode, $size, $mtime, $slnk) = file_to_cpio($_->[0], $_->[1], $_->[4]);
+	add2lists($_->[0], $mode, $size, $mtime, $slnk, $_->[2], $_->[3], $_->[4]);
 	$sizet += $size;
     }
     close_cpio_file;
@@ -889,6 +904,12 @@ foreach (@pkgnames)
 	_append(1034, 4, $count, pack "N" . $count, @mtimes);
 	$count = scalar @md5sums;
 	_append(1035, 8, $count, join("\000", @md5sums) . "\000");
+	if (@flntos) {
+	    $flntos[$#mtimes] = '' if $#mtimes != $#flntos;
+	    foreach (@flntos) { $_ = '' unless defined $_ }
+	    $count = scalar @flntos;
+	    _append(1036, 8, $count, join("\000", @flntos) . "\000");
+	}
 	$count = scalar @unames;
 	_append(1039, 8, $count, join("\000", @unames) . "\000");
 	$count = scalar @gnames;
