@@ -4,13 +4,17 @@
 
 %define thedd tmp/rrtestdd
 
+%global _buildhost reproducible
+%global source_date_epoch_from_changelog Y
+%global clamp_mtime_to_source_date_epoch Y
+
 Name:        test
 Summary:     make test pkg with just test.spec and echo things
 Version:     1
 Release:     1
 License:     Unlicence
 #Buildarch:   noarch
-#Requires:    python
+Requires:    /bin/sh %dnl python
 BuildRequires: perl
 
 %dnl in case of rpmbuild(8), file.spec overrides command line!
@@ -33,11 +37,13 @@ exit
 
 
 %build
+
 { set +x; } 2>/dev/null; exec 2>&1; set -x
 : vv build vv :
 set -eufx
 : $0 :$#: "$@"
 :
+: _bindir %_bindir
 : _target_cpu %_target_cpu
 : _host_cpu %_host_cpu
 : buildroot %buildroot

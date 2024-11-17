@@ -160,11 +160,9 @@ die "'$target_arch': unknown arch\n" unless defined $arch_canon;
 
 sub init_macros()
 {
-    my ($prefix, $exec_prefix, $lib) = ( '/usr', '/usr', 'lib' );
-
     %macros =
-      ( _prefix => $prefix,
-	_exec_prefix => $exec_prefix,
+      ( _prefix => '/usr',
+	_exec_prefix => '/usr',
 	_bindir => '%_exec_prefix/bin',
 	_sbindir => '%_exec_prefix/sbin',
 	_libexecdir => '%_exec_prefix/libexec',
@@ -172,7 +170,7 @@ sub init_macros()
 	_sysconfdir => '%_prefix/etc',
 	_sharedstatedir => '%_prefix/com',
 	_localstatedir => '%_prefix/var',
-	_lib => $lib,
+	_lib => '/lib',
 	_libdir => '%_exec_prefix/%_lib',
 	_includedir => '%_prefix/include',
 	_oldincludedir => '/usr/include',

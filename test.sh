@@ -25,8 +25,9 @@ do
 	continue
 done
 
-
 usage () { die "Usage: ${0##*/} $@"; }
+
+export SOURCE_DATE_EPOCH=1234567890
 
 if test $# = 0
 then
@@ -72,6 +73,7 @@ then
 	fn () {
 		x podman run -u root --pull=never --net=none --rm -it \
 		       --privileged --tmpfs /tmp --tmpfs /run \
+		       --env SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH \
 		       -v "$PWD:$PWD" -w "$PWD" "$ci" "$@"
 	}
 	rm -rf t2-build-rpms; mkdir t2-build-rpms
