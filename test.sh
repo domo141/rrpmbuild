@@ -84,14 +84,23 @@ fi
 
 if test "$1" = 3 # install using /tmp/rrdbdd/ as dbpath (rm -rf'd first)
 then
-	test $# = 1 && usage "{file}.rpm"
-	case $2 in *.rpm) ;; *) die "'$2' does not end with '.rpm'" ;; esac
-	test -f "$2" || die "'$2': no such file"
-
+	test $# = 1 && usage '[fake-deps] {file}.rpm'
+	rpm=$1; shift
+	for arg
+	do shift; set -- "$@" $rpm; rpm=$arg
+	done
+	case $rpm in *.rpm) ;; *) die "'$rpm' does not end with '.rpm'" ;; esac
+	test -f "$rpm" || die "'$2': no such file"
+	date=`date -u +%Y%m%d-%H%M%S`
+	test $# = 0 || x ./x/make-fake-provides-rpm.sh --version=$date -- "$@"
 	rm -rf /tmp/rrdbdd
 	mkdir /tmp/rrdbdd
 	#pfx_cmd='ltrace -f -e memcmp'
-	x_exec $pfx_cmd rpm -ivh --nodeps --dbpath=/tmp/rrdbdd "$2"
+	if test $# = 0
+	then xrpm=
+	else xrpm=build-rpms/fake-provides-$date.noarch.rpm
+	fi
+	x_exec $pfx_cmd rpm -ivh --dbpath=/tmp/rrdbdd $xrpm "$rpm"
 fi
 
 
