@@ -519,7 +519,7 @@ sub file_to_cpio($$$)
 	}
     }
     if ($size & 0x03) {
-	syswrite STDOUT, "\000\000\000", 4 - ($size & 0x03);
+	syswrite STDOUT, "\0\0\0", 4 - ($size & 0x03);
     }
     return ($mode, $size, $mtime, $slnk);# if wantarray;
 }
@@ -787,14 +787,14 @@ foreach (@pkgnames)
 	die "$ptag >= $tag" if $ptag >= $tag and $tag > 99; $ptag = $tag;
 
 	if ($type == 3) { # int16, align by 2
-	    $cdh_extras++, $cdh_offset++, push @cdh_data, "\000"
+	    $cdh_extras++, $cdh_offset++, push @cdh_data, "\0"
 	      if ($cdh_offset & 1);
 	}
 	elsif ($type == 4) { # int32, align by 4
 	    if ($cdh_offset & 3) {
 		my $pad = 4 - ($cdh_offset & 3);
 		$cdh_extras++;
-		$cdh_offset += $pad, push @cdh_data, "\000" x $pad;
+		$cdh_offset += $pad, push @cdh_data, "\0" x $pad;
 	    }
 	}
 	elsif ($type == 5) {die "type 5: int64 not handled"} #int64 align by 8
@@ -809,8 +809,8 @@ foreach (@pkgnames)
     {
 	@cdh_index = (); @cdh_data = (); $cdh_offset = 0; $cdh_extras = 0;
 	$ptag = 0;
-	_append(269, 6, 1, $_[2] . "\000");    # SHA1
-	_append(273, 6, 1, $_[3] . "\000");    # SHA256
+	_append(269, 6, 1, $_[2] . "\0");    # SHA1
+	_append(273, 6, 1, $_[3] . "\0");    # SHA256
 	_append(1000, 4, 1, pack("N", $_[0] - 32)); # SIZE # XXX -32 !!!
 	_append(1004, 7, 16, $_[1]);           # MD5
 	_append(1007, 4, 1, pack("N", $_[4])); # PLSIZE
@@ -863,57 +863,57 @@ foreach (@pkgnames)
 	    if ($count > 0) {
 		return ($count,
 			pack("N" . $count, @depflags),
-			join("\000", @depname) . "\000",
-			join("\000", @depversion) . "\000")
+			join("\0", @depname) . "\0",
+			join("\0", @depversion) . "\0")
 	    }
 	    #else
 	    return ( 0 )
 	}
 
-	_append(100, 6, 1, "C\000"); # hdri18n, atm
+	_append(100, 6, 1, "C\0"); # hdri18n, atm
 
-	_append(1000, 6, 1, "$rpmname\000"); # name
-	_append(1001, 6, 1, "$macros{version}\000"); # version
-	_append(1002, 6, 1, "$macros{release}\000"); # release
-	_append(1004, 9, 1, "$packages{$_[0]}->[1]->{summary}\000"); # summary, atm
+	_append(1000, 6, 1, "$rpmname\0"); # name
+	_append(1001, 6, 1, "$macros{version}\0"); # version
+	_append(1002, 6, 1, "$macros{release}\0"); # release
+	_append(1004, 9, 1, "$packages{$_[0]}->[1]->{summary}\0"); # summary, atm
 	my $description = join '', @{$description{$_[0]}};
 	$description =~ s/\s+$//;
-	_append(1005, 6, 1, "$description\000"); # descrip, atm
+	_append(1005, 6, 1, "$description\0"); # descrip, atm
 	_append(1006, 4, 1, pack("N", $buildtime) ); # buildtime
-	_append(1007, 6, 1, "$buildhost\000"); # buildhost
+	_append(1007, 6, 1, "$buildhost\0"); # buildhost
 	_append(1009, 4, 1, pack("N", $sizet) ); # size
-	_append(1014, 6, 1, "$packages{''}->[1]->{license}\000"); # license, atm
+	_append(1014, 6, 1, "$packages{''}->[1]->{license}\0"); # license, atm
 	my $group = $packages{$_[0]}->[1]->{group} // 'Unspecified';
-	_append(1016, 6, 1, "$group\000");
+	_append(1016, 6, 1, "$group\0");
 	if (! $building_src_pkg) {
-	    _append(1021, 6, 1, "$target_os\000"); # os
-	    _append(1022, 6, 1, "$target_arch\000"); # arch
+	    _append(1021, 6, 1, "$target_os\0"); # os
+	    _append(1022, 6, 1, "$target_arch\0"); # arch
 	}
 
-	_append(1023, 6, 1, $pre{$npkg} . "\000")    if defined $pre{$npkg};
-	_append(1024, 6, 1, $post{$npkg} . "\000")   if defined $post{$npkg};
-	_append(1025, 6, 1, $preun{$npkg} . "\000")  if defined $preun{$npkg};
-	_append(1026, 6, 1, $postun{$npkg} . "\000") if defined $postun{$npkg};
+	_append(1023, 6, 1, $pre{$npkg} . "\0")    if defined $pre{$npkg};
+	_append(1024, 6, 1, $post{$npkg} . "\0")   if defined $post{$npkg};
+	_append(1025, 6, 1, $preun{$npkg} . "\0")  if defined $preun{$npkg};
+	_append(1026, 6, 1, $postun{$npkg} . "\0") if defined $postun{$npkg};
 
 	my $count;
 	$count = scalar @sizes;
-	_append(1028, 4, $count, pack "N" . $count, @sizes);
+	_append(1028, 4, $count, pack "N" . $count, @sizes) if $count;
 	$count = scalar @modes;
-	_append(1030, 3, $count, pack "n" . $count, @modes);
+	_append(1030, 3, $count, pack "n" . $count, @modes) if $count;;
 	$count = scalar @mtimes;
-	_append(1034, 4, $count, pack "N" . $count, @mtimes);
+	_append(1034, 4, $count, pack "N" . $count, @mtimes) if $count;;
 	$count = scalar @md5sums;
-	_append(1035, 8, $count, join("\000", @md5sums) . "\000");
+	_append(1035, 8, $count, join("\0", @md5sums) . "\0") if $count;
 	if (@flntos) {
 	    $flntos[$#mtimes] = '' if $#mtimes != $#flntos;
 	    foreach (@flntos) { $_ = '' unless defined $_ }
 	    $count = scalar @flntos;
-	    _append(1036, 8, $count, join("\000", @flntos) . "\000");
+	    _append(1036, 8, $count, join("\0", @flntos) . "\0");
 	}
 	$count = scalar @unames;
-	_append(1039, 8, $count, join("\000", @unames) . "\000");
+	_append(1039, 8, $count, join("\0", @unames) . "\0") if $count;
 	$count = scalar @gnames;
-	_append(1040, 8, $count, join("\000", @gnames) . "\000");
+	_append(1040, 8, $count, join("\0", @gnames) . "\0") if $count;
 	my ($pcnt, $t1112, $t1113) = 0;
 	if ($building_src_pkg) {
 	    my ($c, $t1, $t2, $t3)
@@ -925,7 +925,7 @@ foreach (@pkgnames)
 	      }
 	}
 	else {
-	    _append(1044, 6, 1, "$macros{name}-$macros{version}-src.rpm\000");
+	    _append(1044, 6, 1, "$macros{name}-$macros{version}-src.rpm\0");
 	    my $p = $packages{$_[0]}->[1]->{provides} || '';
 	    my $t2;
 	    ($pcnt, $t1112, $t2, $t1113)
@@ -940,10 +940,10 @@ foreach (@pkgnames)
 	    }
 	}
 
-	_append(1085, 6, 1, "/bin/sh\000") if defined $pre{$npkg};
-	_append(1086, 6, 1, "/bin/sh\000") if defined $post{$npkg};
-	_append(1087, 6, 1, "/bin/sh\000") if defined $preun{$npkg};
-	_append(1088, 6, 1, "/bin/sh\000") if defined $postun{$npkg};
+	_append(1085, 6, 1, "/bin/sh\0") if defined $pre{$npkg};
+	_append(1086, 6, 1, "/bin/sh\0") if defined $post{$npkg};
+	_append(1087, 6, 1, "/bin/sh\0") if defined $preun{$npkg};
+	_append(1088, 6, 1, "/bin/sh\0") if defined $postun{$npkg};
 
 	if ($pcnt) {
 	    _append 1112, 4, $pcnt, $t1112;
@@ -951,17 +951,17 @@ foreach (@pkgnames)
 	}
 
 	$count = scalar @dirindexes;
-	_append(1116, 4, $count, pack "N" . $count, @dirindexes);
+	_append(1116, 4, $count, pack "N" . $count, @dirindexes) if $count;
 	$count = scalar @files;
-	_append(1117, 8, $count, join("\000", @files) . "\000");
+	_append(1117, 8, $count, join("\0", @files) . "\0") if $count;
 	$count = scalar @dirs;
-	_append(1118, 8, $count, join("\000", @dirs) . "\000");
+	_append(1118, 8, $count, join("\0", @dirs) . "\0") if $count;
 
-	_append(1124, 6, 1, "cpio\000"); # payloadfmt
-	_append(1125, 6, 1, "$plcmpr_w_opts[0]\000"); # payloadcomp
-	_append(1126, 6, 1, "$plflgs\000"); # payloadflags
+	_append(1124, 6, 1, "cpio\0"); # payloadfmt
+	_append(1125, 6, 1, "$plcmpr_w_opts[0]\0"); # payloadcomp
+	_append(1126, 6, 1, "$plflgs\0"); # payloadflags
 
-	_append(1132, 6, 1, "$macros{_target_platform}\000"); # platform
+	_append(1132, 6, 1, "$macros{_target_platform}\0"); # platform
 
 	my $ixcnt = scalar @cdh_data - $cdh_extras + 1;
 	my $sx = (0x10000000 - $ixcnt) * 16;
