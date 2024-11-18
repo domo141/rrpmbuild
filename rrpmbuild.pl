@@ -468,8 +468,8 @@ if (! $building_src_pkg) {
     unless (-d $rpmdir) {
 	system qw/mkdir -p/, $rpmdir unless mkdir $rpmdir;
     }
-    execute_stage 'build', join '', @build;
-    execute_stage 'install', join '', @install;
+    execute_stage 'build', join '', @build if @build;
+    execute_stage 'install', join '', @install if @install;
 }
 
 my ($ino, $cpio_dsize);
