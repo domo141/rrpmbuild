@@ -44,15 +44,26 @@ then
 	exit
 fi
 
-if test "$1" = 1 # run rrpmbuild -bb test.spec w/ all compressors and levels
+if test "$1" = 1 # run one rrpmbuild -bb test.spec w/
+then
+	rm -rf build-rpms; mkdir build-rpms # should give in -D but...
+	script -ec "exec /usr/bin/time -p ./rrpmbuild.pl -bb x/test.spec"
+	mv typescript build-rpms
+	rm -rf t1-build-rpms
+	exec \
+	mv build-rpms t1-build-rpms
+	exit not reached
+fi
+
+if test "$1" = 2 # run rrpmbuild -bb test.spec w/ all compressors and levels
 then
 	fn () {
 		script -ec "exec /usr/bin/time -p \
 		./rrpmbuild.pl -D '_binary_payload w$2.$1dio' -bb x/test.spec"
 		mv typescript build-rpms
-		mv build-rpms t1-build-rpms/$1-$2
+		mv build-rpms t2-build-rpms/$1-$2
 	}
-	rm -rf build-rpms t1-build-rpms; mkdir t1-build-rpms
+	rm -rf build-rpms t2-build-rpms; mkdir t2-build-rpms
 	fn xz 0; fn zst 0; fn zst 10
 	for l in 1 2 3 4 5 6 7 8 9
 	do
@@ -62,7 +73,7 @@ then
 	exit
 fi
 
-if test "$1" = 2 # run one rpmbuild command line in podman container
+if test "$1" = 3 # run one rpmbuild command line in podman container
 then
 	test $# = 1 && { echo
 		echo choose a container image which has rpmbuild'(8)' below
@@ -76,16 +87,16 @@ then
 		       --env SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH \
 		       -v "$PWD:$PWD" -w "$PWD" "$ci" "$@"
 	}
-	rm -rf t2-build-rpms; mkdir t2-build-rpms
-	fn rpmbuild --build-in-place -D_rpmdir\ t2-build-rpms \
+	rm -rf t3-build-rpms; mkdir t3-build-rpms
+	fn rpmbuild --build-in-place -D_rpmdir\ t3-build-rpms \
 	   -D '_binary_payload w3.gzdio' -bb x/test.spec
 	exit
 fi
 
-if test "$1" = 3 # install using /tmp/rrdbdd/ as dbpath (rm -rf'd first)
+if test "$1" = 4 # install using /tmp/rrdbdd/ as dbpath (rm -rf'd first)
 then
 	test $# = 1 && usage '[fake-deps] {file}.rpm'
-	rpm=$1; shift
+	shift; rpm=$1; shift
 	for arg
 	do shift; set -- "$@" $rpm; rpm=$arg
 	done
@@ -104,7 +115,7 @@ then
 fi
 
 
-if test "$1" = 9 # exit 1 (i.e. placeholder)
+if test "$1" = 9 # exit 1 (copy/paste (ok, copy-region-as-kill - yank) for new)
 then
 	x exit 1
 fi
