@@ -293,7 +293,8 @@ my $plcompcmd = $plcompcmds{$plcomp};
 die "'$plcomp': not known playload compressor\n" unless defined $plcompcmd;
 
 if ($extract) {
-    mkdir $filesdir;
+    mkdir $filesdir or die "Cannot create '$filesdir': $!\n";
+    chdir $filesdir or die "Cannot chdir to '$filesdir': $!\n";
     print STDOUT "Extracting Archive (at $tlen) to '$filesdir'\n";
 }
 else {
