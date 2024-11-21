@@ -472,45 +472,59 @@ if (! $building_src_pkg) {
     execute_stage 'install', join '', @install if @install;
 }
 
-my ($ino, $cpio_dsize);
+my $ino;
 sub open_cpio_file($)
 {
     open STDOUT, '>', $_[0] or die "Open $_[0] failed: $!\n";
     $ino = 1;
-    $cpio_dsize = 0;
 }
 
 # knows files, directories and symlinks (not adding fileclass (yet))
-sub file_to_cpio($$$)
+sub file_lstat($$)
 {
-    my ($name, $mode, $file) = @_;
-    my ($size, $mtime, $nlink);
+    my ($mode, $file) = @_;
+    my ($size, $mtime);
 
-    if (defined $file) {
-	my @sb = lstat $file or die "lstat '$file': $!\n";
-	$mtime = ($sde eq '')? $sb[9]: $buildtime;
-	if (S_ISLNK($sb[2])) {
-	    $size = $sb[7]; $mode = 0120777; $nlink = 1;
-	}
-	elsif (S_ISDIR($sb[2])) {
-	    $size = 0; $mode += 0040000; $nlink = 2;
-	}
-	else { $size = $sb[7]; $mode += 0100000; $nlink = 1; }
+    my @sb = lstat $file or die "lstat '$file': $!\n";
+    $mtime = ($sde eq '')? $sb[9]: $buildtime;
+    if (S_ISLNK($sb[2])) {
+	$size = $sb[7]; $mode = 0120777;
     }
-    else { $mtime = 0; $size = 0; $mode = 0; $nlink = 1; }
+    elsif (S_ISDIR($sb[2])) {
+	$size = 0; $mode += 0040000;
+    }
+    else { $size = $sb[7]; $mode += 0100000; }
+
+    return ($mode, $size, $mtime);# if wantarray;
+}
+
+sub hl_to_cpio($$$$)
+{
+    my ($name, $mode, $nlink, $mtime) = @_;
 
     my $namesize = length($name) + 1;
     my $hdrbytes = 110 + $namesize;
     $hdrbytes += 4 - ($hdrbytes & 0x03) if ($hdrbytes & 0x03);
     # Type: New ASCII without crc (070701). See librachive/cpio.5
     syswrite STDOUT, sprintf
-      ("070701%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x%08x00000000%s\0\0\0\0",
-       $ino++, $mode,0,0, $nlink, $mtime, $size, 0,0,0,0, $namesize, $name),
-	 $hdrbytes;
+      ('070701' . '%08x' x 12 . "00000000%s\0\0\0\0", $ino, $mode, 0, 0,
+       $nlink, $mtime, 0, 0,0,0,0, $namesize, $name), $hdrbytes;
+}
+
+sub file_to_cpio($$$$$$)
+{
+    my ($name, $mode, $nlink, $mtime, $size, $file) = @_;
+
+    my $namesize = length($name) + 1;
+    my $hdrbytes = 110 + $namesize;
+    $hdrbytes += 4 - ($hdrbytes & 0x03) if ($hdrbytes & 0x03);
+    # Type: New ASCII without crc (070701). See librachive/cpio.5
+    syswrite STDOUT, sprintf
+      ('070701' . '%08x' x 12 . "00000000%s\0\0\0\0", $ino, $mode, 0, 0,
+       $nlink, $mtime, $size, 0,0,0,0, $namesize, $name), $hdrbytes;
 
     my $slnk = '';
     if ($size) {
-	$cpio_dsize += $size;
 	if ($mode == 0120777) {
 	    $slnk = readlink $file;
 	    syswrite STDOUT, $slnk;
@@ -521,14 +535,14 @@ sub file_to_cpio($$$)
     if ($size & 0x03) {
 	syswrite STDOUT, "\0\0\0", 4 - ($size & 0x03);
     }
-    return ($mode, $size, $mtime, $slnk);# if wantarray;
+    return $slnk
 }
 
 sub close_cpio_file()
 {
     $ino = 0;
-    file_to_cpio('TRAILER!!!', 0, undef);
-    # not making size multiple of 512 (as doesn't rpm do either).
+    file_to_cpio('TRAILER!!!', 0, 1, 0, 0, undef);
+    # not making size multiple of 512 (as doesn't rpm do either)
     open STDOUT, ">&STDERR" or die;
 }
 
@@ -597,8 +611,7 @@ foreach (@pkgnames)
 	if (-d "$instroot/$_[0]") {
 	    warn "Adding directory $_[0]\n";
 
-	    push @filelist,
-	      [ $_[0], $dmode, $uname, $gname, "$instroot/$_[0]" ];
+	    push @filelist, [ $_[0], $dmode, $uname, $gname, "$instroot/$_[0]" ];
 
 	    return if $_[1];
 	    sub _f() { push @_flist, (substr $_, $instrlen + 1); }
@@ -610,8 +623,8 @@ foreach (@pkgnames)
 	    return;
 	}
 	warn "Adding file $_[0]\n";
-	push @filelist,
-	  [ $_[0], $fmode, $uname, $gname, "$instroot/$_[0]" ];
+	push @filelist, [ $_[0], $fmode, $uname, $gname, "$instroot/$_[0]" ];
+
 	#warn 'XXXX 2 ', \@filelist, ' ', "@filelist", "\n";
     }
     sub addfile($$) # file, isdir
@@ -727,14 +740,17 @@ foreach (@pkgnames)
 	else { push @md5sums, '' }
     }
 
-    #warn 'XXXX 3 ', \@filelist, ' ', "@filelist", "\n";
+    @filelist = sort { $a->[0] cmp $b->[0] } @filelist;
+    my %devinos;
 
     # Do permission check in separate loop as linux/windows functionality
     # differs when checking permissions from filesystem.
     # Cygwin can(?) handle permissions, Native w32/64 not supported ATM.
+    # -- as of 2024-10: add dev:ino (for hard links) to unices part --
     if ($^O eq 'msys') {
 	my (@flist, %flist);
 	foreach (@filelist) {
+	    $_->[5] = [ $_ ]; # no hard link detection
 	    push @flist, $_->[4] if ($_->[1] < 0);
 	}
 	if (@flist) {
@@ -757,12 +773,26 @@ foreach (@pkgnames)
     }
     else { # unices!
 	foreach (@filelist) {
+	    my @sb = lstat $_->[4] or die "lstat $_->[4]: $!\n";
+	    $_->[5] = [ $_ ]; # disabled hard link detection for now
+	    #my $devino = $sb[0].':'.$sb[1];
+	    #my $he = $devinos{$devino} // [];
+	    #$devinos{$devino} = $he unless @{$he};
+	    #push @{$he}, $_;
+	    #$_->[5] = $he;
 	    if ($_->[1] < 0) {
-		my @sb = stat $_->[4] or die "stat $_->[4]: $!\n";
 		$_->[1] = $sb[2] & 0777;
 	    }
 	}
     }
+
+    # move last to first (if more than one) - used in next unless $f == $l->[0]
+    # for hard links (although currently empty as disabled)
+    foreach (values %devinos) {
+	my $l = pop @{$_};
+	unshift @{$_}, $l;
+    }
+    undef %devinos;
 
     my $pkgfbase = $rpmdir . '/' . $pkgname;
     my $cpiofile = $pkgfbase . '-cpio';
@@ -772,10 +802,21 @@ foreach (@pkgnames)
 
     open_cpio_file $cpiofile;
     my $sizet = 0;
-    foreach (sort { $a->[0] cmp $b->[0] } @filelist) {
-	my ($mode, $size, $mtime, $slnk) = file_to_cpio($_->[0], $_->[1], $_->[4]);
-	add2lists($_->[0], $mode, $size, $mtime, $slnk, $_->[2], $_->[3], $_->[4]);
+    foreach my $f (@filelist) {
+	my $l = $f->[5];
+	next unless $f == $l->[0]; # hard links... use last
+	my $nlink = scalar @$l;
+	shift @$l;
+	my ($mode, $size, $mtime) = file_lstat $f->[1], $f->[4];
+	foreach my $h (@{$l}) {
+	    hl_to_cpio $h->[0], $mode, $nlink, $mtime;
+	    #add2lists $h->[0], $mode, $size, $mtime, 0, $h->[2], $h->[3], $h->[4];
+	    add2lists $h->[0], $mode, $size, $mtime, 0, $h->[2], $h->[3], '';
+	}
+	my $slnk = file_to_cpio $f->[0], $mode, $nlink, $mtime, $size, $f->[4];
+	add2lists $f->[0], $mode, $size, $mtime, $slnk, $f->[2], $f->[3], $f->[4];
 	$sizet += $size;
+	$ino++;
     }
     close_cpio_file;
 
