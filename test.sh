@@ -95,22 +95,28 @@ fi
 
 if test "$1" = 4 # install using /tmp/rrdbdd/ as dbpath (rm -rf'd first)
 then
-	test $# = 1 && usage '[fake-deps] {file}.rpm'
+	test $# = 1 && usage '[fake deps|deps.rpm] file.rpm'
 	shift; rpm=$1; shift
 	for arg
-	do shift; set -- "$@" $rpm; rpm=$arg
+	do shift; set -- "$@" "$rpm"; rpm=$arg
 	done
 	case $rpm in *.rpm) ;; *) die "'$rpm' does not end with '.rpm'" ;; esac
-	test -f "$rpm" || die "'$2': no such file"
+	test -f "$rpm" || die "'$rpm': no such file"
 	date=`date -u +%Y%m%d-%H%M%S`
-	test $# = 0 || x ./x/make-fake-provides-rpm.sh --version=$date -- "$@"
+	if test $# = 0
+	then
+		xrpm=
+	else
+		case $1 in *["$IFS"]*) die "Whitespace in '$1'"; esac
+		case $#,$1 in 1,*.rpm) xrpm=$1 ;; *)
+		 date=`date -u +%Y%m%d-%H%M%S`
+		 x ./x/make-fake-provides-rpm.sh --version=$date -- "$@"
+		 xrpm=build-rpms/fake-provides-$date.noarch.rpm
+		esac
+	fi
 	rm -rf /tmp/rrdbdd
 	mkdir /tmp/rrdbdd
 	#pfx_cmd='ltrace -f -e memcmp'
-	if test $# = 0
-	then xrpm=
-	else xrpm=build-rpms/fake-provides-$date.noarch.rpm
-	fi
 	x_exec $pfx_cmd rpm -ivh --dbpath=/tmp/rrdbdd $xrpm "$rpm"
 fi
 
