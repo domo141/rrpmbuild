@@ -702,9 +702,9 @@ foreach (@pkgnames)
 
     # Ditto.
     our (@files, @dirindexes, @dirs,%dirs, @modes, @sizes, @mtimes, @flntos);
-    our (@unames, @gnames, @md5sums);
+    our (@inos,  @unames, @gnames, @md5sums);
     local (@files, @dirindexes, @dirs,%dirs, @modes, @sizes, @mtimes, @flntos);
-    local (@unames, @gnames, @md5sums);
+    local (@inos,  @unames, @gnames, @md5sums);
     sub add2lists($$$$$$$$)
     {
 	sub getmd5sum($)
@@ -723,6 +723,7 @@ foreach (@pkgnames)
 	    $di = $dirs{$dir} = scalar @dirs;
 	    push @dirs, $dir;
 	}
+	push @inos, $ino;
 	push @files, $base;
 	push @dirindexes, $di;
 
@@ -774,20 +775,19 @@ foreach (@pkgnames)
     else { # unices!
 	foreach (@filelist) {
 	    my @sb = lstat $_->[4] or die "lstat $_->[4]: $!\n";
-	    $_->[5] = [ $_ ]; # disabled hard link detection for now
-	    #my $devino = $sb[0].':'.$sb[1];
-	    #my $he = $devinos{$devino} // [];
-	    #$devinos{$devino} = $he unless @{$he};
-	    #push @{$he}, $_;
-	    #$_->[5] = $he;
+	    my $devino = $sb[0].':'.$sb[1];
+	    my $he = $devinos{$devino} // []; # hard links...
+	    $devinos{$devino} = $he unless @{$he};
+	    push @{$he}, $_;
+	    $_->[5] = $he;
 	    if ($_->[1] < 0) {
 		$_->[1] = $sb[2] & 0777;
 	    }
 	}
     }
 
-    # move last to first (if more than one) - used in next unless $f == $l->[0]
-    # for hard links (although currently empty as disabled)
+    # move last to first (if more than one)
+    # -- used in next unless $f == $l->[0] -- hard links...
     foreach (values %devinos) {
 	my $l = pop @{$_};
 	unshift @{$_}, $l;
@@ -802,6 +802,7 @@ foreach (@pkgnames)
 
     open_cpio_file $cpiofile;
     my $sizet = 0;
+    my $hardlinks = 0;
     foreach my $f (@filelist) {
 	my $l = $f->[5];
 	next unless $f == $l->[0]; # hard links... use last
@@ -810,8 +811,8 @@ foreach (@pkgnames)
 	my ($mode, $size, $mtime) = file_lstat $f->[1], $f->[4];
 	foreach my $h (@{$l}) {
 	    hl_to_cpio $h->[0], $mode, $nlink, $mtime;
-	    #add2lists $h->[0], $mode, $size, $mtime, 0, $h->[2], $h->[3], $h->[4];
-	    add2lists $h->[0], $mode, $size, $mtime, 0, $h->[2], $h->[3], '';
+	    add2lists $h->[0], $mode, $size, $mtime, 0, $h->[2], $h->[3], $h->[4];
+	    $hardlinks++;
 	}
 	my $slnk = file_to_cpio $f->[0], $mode, $nlink, $mtime, $size, $f->[4];
 	add2lists $f->[0], $mode, $size, $mtime, $slnk, $f->[2], $f->[3], $f->[4];
@@ -985,6 +986,12 @@ foreach (@pkgnames)
 	_append(1086, 6, 1, "/bin/sh\0") if defined $post{$npkg};
 	_append(1087, 6, 1, "/bin/sh\0") if defined $preun{$npkg};
 	_append(1088, 6, 1, "/bin/sh\0") if defined $postun{$npkg};
+
+	$count = scalar @inos;
+	if ($hardlinks and $count) {
+	    _append(1095, 4, $count, pack "N" . $count, (1) x $count);
+	    _append(1096, 4, $count, pack "N" . $count, @inos);
+	}
 
 	if ($pcnt) {
 	    _append 1112, 4, $pcnt, $t1112;
