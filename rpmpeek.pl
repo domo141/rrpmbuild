@@ -9,12 +9,13 @@ use warnings;
 
 $" = ', ';
 
-my $extract = 0;
+my ($extract, $ahdmp) = (0, '');
 if (defined $ARGV[0]) {
     $extract = 1, shift @ARGV if $ARGV[0] eq '-x';
+    $ahdmp = 'D', shift @ARGV if $ARGV[0] eq '-D'; # undocumented
 }
 
-die "Usage: $0 [-x] file.rpm\n" unless defined $ARGV[0];
+die "\nUsage: $0 [-x] file.rpm\n\n" unless defined $ARGV[0];
 
 open I, '<', $ARGV[0] or die "Cannot open '$ARGV[0]': $!.\n";
 
@@ -339,13 +340,13 @@ while (($l = read P, $_, 110) == 110) {
     my ($ma, $i, $m, $u, $g, $lc, $t, $s, $dma, $dmi, $rma, $rmi, $ns, $c)
 	= unpack('A6A8A8A8A8A8A8A8A8A8A8A8A8A8');
     die "'$ma' not '070701'\n" unless $ma eq '070701';
+    ($i,$m, $u,$g, $lc,$s) = (hex $i,hex $m, hex $u,hex $g, hex $lc,hex $s);
+    print "$ma $i $m $u $g $lc $t $s $dma $dmi $rma $rmi $c\n" if $ahdmp;
     $ns = hex $ns;
     $l = read P, $_, $ns;
     die "Could not read file name ($ns bytes)\n" unless $l == $ns;
     chop; # trailing \0 in file name
-    $s = hex $s;
-    printf "%4d %6o %4d %4d %3d %8d %s\n",
-	hex $i, hex $m, hex $u, hex $g, hex $lc, $s, $_;
+    printf "%4d %6o %4d %4d %3d %8d %s\n", $i, $m, $u, $g, $lc, $s, $_;
     $ns = ($ns + 2) & 3;
     $ns = 4 - $ns if $ns;
 
