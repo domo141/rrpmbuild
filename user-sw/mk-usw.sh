@@ -8,7 +8,7 @@
 #	    All rights reserved
 #
 # Created: Tue 01 Oct 2024 20:15:45 EEST too
-# Last modified: Fri 11 Oct 2024 19:55:16 +0300 too
+# Last modified: Sat 23 Nov 2024 13:37:08 -0800 too
 
 case ${BASH_VERSION-} in *.*) set -o posix; shopt -s xpg_echo; esac
 case ${ZSH_VERSION-} in *.*) emulate ksh; esac
@@ -82,6 +82,7 @@ Version: $v
 Release: $r
 License: LGPL v2.1
 BuildArch: noarch
+Provides: $rp1
 
 %description
 User to install custom-made rpm pkgs to non-root hierarchy

@@ -6,7 +6,7 @@
 #	    All rights reserved
 test "$1" = '' && shift || exit install-me-first
 # Created: Tue 01 Oct 2024 20:30:50 EEST too
-# Last modified: Wed 09 Oct 2024 22:32:11 +0300 too
+# Last modified: Sat 23 Nov 2024 13:46:13 -0800 too
 
 case ${BASH_VERSION-} in *.*) set -o posix; shopt -s xpg_echo; esac
 case ${ZSH_VERSION-} in *.*) emulate ksh; esac
@@ -48,6 +48,8 @@ case $c in rpm*)
 	case $c in rpm[iu])
 		for arg
 		do  case  $arg  in *$chi.*.rpm)
+			grep -aq "$rootdir/" "$arg" ||
+			     die "Cannot find '$rootdir/' in '$arg'"
 				;; *.rpm)
 			die "No '*$chi.*.' part in '$arg'"
 		    esac
@@ -90,6 +92,7 @@ Version: 1
 Release: 1$chi
 #License: Fixme and uncomment
 #BuildArch: noarch
+Requires: $rootdir
 
 %description
 (multi-line description text for $1)
