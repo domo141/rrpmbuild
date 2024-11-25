@@ -13,10 +13,22 @@ The feature set compared to (real) RPM build system is much smaller,
 but in some cases this is sufficient. This tool is arguably easier
 to use for simple cases.
 
+As of 2024-11 symlink and hard link support has been added. Just that
+packages with hard links don't install with rpm(8) version 4.11 -- with
+version 4.14 (to 4.20.0) those do install. symlinks work with rpm 4.11.
+One could chase this problem by using rpmbuild 4.11 (e.g. CentOS 7)
+and compare the output... or create hardlinks-to-symlinks.pl and use
+it as part of the %install step in .spec file...
+
 rpmpeek
 =======
 
 A tool to view (and extract) rpm package structure and files.
+
+user-sw/
+--------
+
+See user-sw/README
 
 mkpkgs.sh
 ---------
