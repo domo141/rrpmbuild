@@ -8,7 +8,7 @@
 #	    All rights reserved
 #
 # Created: Tue 01 Oct 2024 20:15:45 EEST too
-# Last modified: Mon 25 Nov 2024 23:32:04 +0200 too
+# Last modified: Mon 25 Nov 2024 23:58:15 +0200 too
 
 case ${BASH_VERSION-} in *.*) set -o posix; shopt -s xpg_echo; esac
 case ${ZSH_VERSION-} in *.*) emulate ksh; esac
@@ -24,7 +24,8 @@ x_exec () { printf '+ %s\n' "$*" >&2; exec "$@"; exit not reached; }
 
 # for v (since 2024-11-24): odd: "devel", even: "release"
 v=13
-r=1.usw
+r=`git log --format=%% 41a697e4be1f..`; r=$(((${#r} + 1) / 2)).usw # devel
+# replace above when release: r=1.usw
 
 test $# -gt 0 || die "Usage: ${0##*/} {rootdir}
 
