@@ -8,7 +8,7 @@
 #	    All rights reserved
 #
 # Created: Tue 01 Oct 2024 20:15:45 EEST too
-# Last modified: Sat 23 Nov 2024 13:37:08 -0800 too
+# Last modified: Mon 25 Nov 2024 23:32:04 +0200 too
 
 case ${BASH_VERSION-} in *.*) set -o posix; shopt -s xpg_echo; esac
 case ${ZSH_VERSION-} in *.*) emulate ksh; esac
@@ -22,7 +22,8 @@ die () { printf '%s\n' '' "$@" ''; exit 1; } >&2
 x () { printf '+ %s\n' "$*" >&2; "$@"; }
 x_exec () { printf '+ %s\n' "$*" >&2; exec "$@"; exit not reached; }
 
-v=12
+# for v (since 2024-11-24): odd: "devel", even: "release"
+v=13
 r=1.usw
 
 test $# -gt 0 || die "Usage: ${0##*/} {rootdir}
@@ -122,7 +123,7 @@ fi
 
 bf=bootstrap-user-sw-$chi.sh
 sed -ne 1d -e '/^#!\/bin\/sh/,$ {
-	'"s %d $1 ; s/%rpm/$user_sw_rpm/; p; }" "$0" > $bf
+	'"s %d $rp1 ; s/%rpm/$user_sw_rpm/; p; }" "$0" > $bf
 chmod 755 $bf
 
 echo Use:
@@ -151,7 +152,7 @@ test -f "$1" || die "'$1': no such file"
 
 d=%d
 
-test -d "$d" || die "Create '$d' first"
+test -d "$d" || die "Create '$d/' first"
 
 duid=`stat -c %u "$d"`
 test "$duid" = "$UID" || die "Directory '$d' owner '$duid' not '$UID'"

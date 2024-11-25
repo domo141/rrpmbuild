@@ -6,7 +6,7 @@
 #	    All rights reserved
 test "$1" = '' && shift || exit install-me-first
 # Created: Tue 01 Oct 2024 20:30:50 EEST too
-# Last modified: Sat 23 Nov 2024 13:46:13 -0800 too
+# Last modified: Mon 25 Nov 2024 23:32:00 +0200 too
 
 case ${BASH_VERSION-} in *.*) set -o posix; shopt -s xpg_echo; esac
 case ${ZSH_VERSION-} in *.*) emulate ksh; esac
@@ -51,7 +51,7 @@ case $c in rpm*)
 			grep -aq "$rootdir/" "$arg" ||
 			     die "Cannot find '$rootdir/' in '$arg'"
 				;; *.rpm)
-			die "No '*$chi.*.' part in '$arg'"
+			die "No '*$chi.*' part in '$arg'"
 		    esac
 		done
 	esac
@@ -61,7 +61,7 @@ case $c in rpm*)
 		;; rpmqil) set -- -qil "$@"
 		;; rpmqilp) set -- -qilp "$@"
 		;; rpmqf)
-			x_exec $rpm -q -f $rootdir/bin/"$1"
+			x_exec $rpm -q -f "$1"
 			exit not reached
 		;; rpm) test "${1-}" = --footgun ||
 				die "Enter '--footgun' as first arg for $c"
@@ -81,7 +81,7 @@ if test $c = spec
 then
 	test $# = 1 || die "$0 spec {name}"
 	case $1 in *["$IFS"]*) die "Whitespace in '$1'"; esac
-	fn=$1$chi.spec
+	fn=${1%.spec}$chi.spec
 	test -f $fn && die "File '$fn' exists"
 	echo "\
 # edit, then try with rrpmbuild.pl -bb $fn
