@@ -13,11 +13,12 @@ x () { printf '+ %s\n' "$*" >&2; "$@"; }
 x_eval () { printf '+ %s\n' "$*" >&2; eval "$*"; }
 x_exec () { printf '+ %s\n' "$*" >&2; exec "$@"; }
 
-pfx_cmd=
+pfx_cmd= vv=
 while	case ${1-}
 	in l) x_eval 'export LD_PRELOAD=$PWD/ldpreload-peek-memcmp.so'
 	;; p) test "${PFX_CMD-}" || die "PFX_CMD not defined in environment"
 	      pfx_cmd=$PFX_CMD
+	;; vv) vv=-vv
 	;; *) break
 	esac
 do
@@ -116,8 +117,9 @@ then
 	fi
 	rm -rf /tmp/rrdbdd
 	mkdir /tmp/rrdbdd
+	command -v rpm
 	#pfx_cmd='ltrace -f -e memcmp'
-	x_exec $pfx_cmd rpm -ivh --dbpath=/tmp/rrdbdd $xrpm "$rpm"
+	x_exec $pfx_cmd rpm $vv -ivh --dbpath=/tmp/rrdbdd $xrpm "$rpm"
 fi
 
 
