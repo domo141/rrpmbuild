@@ -113,14 +113,14 @@ while (@ARGV > 0) {
 	die "$0: option '$_' requires an argument\n" unless @ARGV > 0;
 	$_ = shift @ARGV;
 	die "'$_' not macro[ ]val\n" unless /^(\w+)[ ](.*)/;
-	push @defines, "$1 $2";
+	push @defines, [ $1, $2 ];
 	$macros{$1} = $2;
 	next
     }
     if ($_ =~ /-D(.+)/) {
 	$_ = $1;
 	die "'$_' not macro[ ]val\n" unless /^(\w+)[ ](.*)/;
-	push @defines, "$1 $2";
+	push @defines, [ $1, $2 ];
 	$macros{$1} = $2;
 	next
     }
@@ -186,7 +186,7 @@ sub init_macros()
 	_rpmdir => $rpmdir,
 	_target_platform => "$target_arch-$vendor-$target_os",
 
-	setup => 'echo no %prep' );
+	setup => 'echo no %prep' )
 }
 
 sub _eval_macros($)
@@ -230,8 +230,9 @@ sub rest_macros()
 
     $macros{buildroot} = $instroot;
     foreach (@defines) {
-	/(\w+)\s+(.*)/; $macros{$1} = eval_macros $2
+	$macros{$_->[0]} = eval_macros $_->[1]
     }
+    @defines = ();
     sub NL() { "\n" }
     # makeinstall deprecated -- so no updates
     $macros{'makeinstall'} = eval_macros ( 'make install \\' . NL .
@@ -264,6 +265,7 @@ sub rest_macros()
 my %stanzas = ( package => 1, description => 1, changelog => 1,
 		prep => 1, build => 1, install => 1, clean => 1,
 		files => 1, pre => 1, post => 1, preun => 1, postun => 1 );
+
 sub readspec()
 {
     sub readpackage($)
@@ -277,7 +279,7 @@ sub readspec()
 	    if (/^\s*%define\s+(\S+)\s+(.*?)\s*$/ or
 		/^\s*%global\s+(\S+)\s+(.*?)\s*$/) {
 		$macros{$1} = eval_macros $2;
-		next;
+		next
 	    }
 	    last if /^\s*%/;
 	    if (/^\s*(\S+?)\s*:\s*(.*?)\s+$/) {
@@ -370,12 +372,12 @@ sub readspec()
 	    #we need to consume the spec file even when building source package
 	    readpackage ($packages{$2} = [ [ ], { } ]);
 	}
-	elsif ($1 eq 'description') { readlines ($description{$2} = [ ]); }
+	elsif ($1 eq 'description') { readlines ($description{$2} = [ ]) }
 
-	elsif ($1 eq 'prep') {    readignore \@prep; }
-	elsif ($1 eq 'build') {   readlines \@build; }
-	elsif ($1 eq 'install') { readlines \@install; }
-	elsif ($1 eq 'clean') {   readlines \@clean; }
+	elsif ($1 eq 'prep') {    readignore \@prep }
+	elsif ($1 eq 'build') {   readlines \@build }
+	elsif ($1 eq 'install') { readlines \@install }
+	elsif ($1 eq 'clean') {   readlines \@clean }
 
 	elsif ($1 eq 'files') {
 	    if ($building_src_pkg) {
@@ -386,14 +388,14 @@ sub readspec()
 	    }
 	}
 
-	elsif ($1 eq 'pre') { readlines2string $pre{$2}; }
-	elsif ($1 eq 'post') { readlines2string $post{$2}; }
-	elsif ($1 eq 'preun') { readlines2string $preun{$2}; }
-	elsif ($1 eq 'postun') { readlines2string $postun{$2}; }
+	elsif ($1 eq 'pre') { readlines2string $pre{$2} }
+	elsif ($1 eq 'post') { readlines2string $post{$2} }
+	elsif ($1 eq 'preun') { readlines2string $preun{$2} }
+	elsif ($1 eq 'postun') { readlines2string $postun{$2} }
 
-	elsif ($1 eq 'changelog') { readlines \@changelog; }
+	elsif ($1 eq 'changelog') { readlines \@changelog }
 
-	else { chomp; die "'$1': unsupported stanza macro.\n"; }
+	else { chomp; die "'$1': unsupported stanza macro.\n" }
 	last if eof I;
     };
 }
@@ -858,20 +860,24 @@ foreach (@pkgnames)
 		$cdh_offset += $pad, push @cdh_data, "\0" x $pad;
 	    }
 	}
-	elsif ($type == 5) {die "type 5: int64 not handled"} #int64 align by 8
-
+	elsif ($type == 5) {
+	    die "type 5: int64 not handled (yet)" # int64, align by 8
+	}
+	elsif ($type == 6 or $type == 9) {
+	    $data .= "\0"
+	}
 	push @cdh_index, pack("NNNN", $tag, $type, $cdh_offset, $count);
-	push @cdh_data, $_[3];
-	$cdh_offset += length $_[3];
-	warn 'Pushing data "', $_[3], '"', "\n" if $type == 6;
+	push @cdh_data, $data;
+	$cdh_offset += length $data;
+	warn 'Pushing data "', $_[3], '"', "\n" if $type == 6 or $type == 9;
     }
 
     sub createsigheader($$$$$)
     {
 	@cdh_index = (); @cdh_data = (); $cdh_offset = 0; $cdh_extras = 0;
 	$ptag = 0;
-	_append(269, 6, 1, $_[2] . "\0");    # SHA1
-	_append(273, 6, 1, $_[3] . "\0");    # SHA256
+	_append(269, 6, 1, $_[2]);             # SHA1
+	_append(273, 6, 1, $_[3]);             # SHA256
 	_append(1000, 4, 1, pack("N", $_[0] - 32)); # SIZE # XXX -32 !!!
 	_append(1004, 7, 16, $_[1]);           # MD5
 	_append(1007, 4, 1, pack("N", $_[4])); # PLSIZE
@@ -907,54 +913,46 @@ foreach (@pkgnames)
 		    push @depversion, '';
 		    next
 		}
-		my $f;
-		if ($flag =~ /=/){
-		$f |= 0x08;
-		}
-		if ($flag =~ />/) {
-		    $f |= 0x04;
-		}
-		if ($flag =~ /</) {
-		    $f |= 0x02;
-		}
+		my $f = 0;
+		if ($flag =~ /=/) { $f |= 0x08 }
+		if ($flag =~ />/) { $f |= 0x04 }
+		if ($flag =~ /</) { $f |= 0x02 }
 		push @depflags, $f;
 		push @depversion, $version;
 	    }
 	    my $count = scalar @deps;
-	    if ($count > 0) {
-		return ($count,
-			pack("N" . $count, @depflags),
-			join("\0", @depname) . "\0",
-			join("\0", @depversion) . "\0")
-	    }
-	    #else
-	    return ( 0 )
+	    return ( 0 ) unless $count;
+	    # else #
+	    return ($count,
+		    pack("N" . $count, @depflags),
+		    join("\0", @depname) . "\0",
+		    join("\0", @depversion) . "\0")
 	}
 
-	_append(100, 6, 1, "C\0"); # hdri18n, atm
+	_append(100, 6, 1, 'C'); # hdri18n
 
-	_append(1000, 6, 1, "$rpmname\0"); # name
-	_append(1001, 6, 1, "$macros{version}\0"); # version
-	_append(1002, 6, 1, "$macros{release}\0"); # release
-	_append(1004, 9, 1, "$packages{$_[0]}->[1]->{summary}\0"); # summary, atm
+	_append(1000, 6, 1, $rpmname); # name
+	_append(1001, 6, 1, $macros{version});
+	_append(1002, 6, 1, $macros{release});
+	_append(1004, 9, 1, $packages{$_[0]}->[1]->{summary});
 	my $description = join '', @{$description{$_[0]}};
 	$description =~ s/\s+$//;
-	_append(1005, 6, 1, "$description\0"); # descrip, atm
-	_append(1006, 4, 1, pack("N", $buildtime) ); # buildtime
-	_append(1007, 6, 1, "$buildhost\0"); # buildhost
+	_append(1005, 6, 1, $description);
+	_append(1006, 4, 1, pack("N", $buildtime) );
+	_append(1007, 6, 1, $buildhost);
 	_append(1009, 4, 1, pack("N", $sizet) ); # size
-	_append(1014, 6, 1, "$packages{''}->[1]->{license}\0"); # license, atm
+	_append(1014, 6, 1, $packages{''}->[1]->{license});
 	my $group = $packages{$_[0]}->[1]->{group} // 'Unspecified';
-	_append(1016, 6, 1, "$group\0");
+	_append(1016, 6, 1, $group);
 	if (! $building_src_pkg) {
-	    _append(1021, 6, 1, "$target_os\0"); # os
-	    _append(1022, 6, 1, "$target_arch\0"); # arch
+	    _append(1021, 6, 1, $target_os);
+	    _append(1022, 6, 1, $target_arch);
 	}
 
-	_append(1023, 6, 1, $pre{$npkg} . "\0")    if defined $pre{$npkg};
-	_append(1024, 6, 1, $post{$npkg} . "\0")   if defined $post{$npkg};
-	_append(1025, 6, 1, $preun{$npkg} . "\0")  if defined $preun{$npkg};
-	_append(1026, 6, 1, $postun{$npkg} . "\0") if defined $postun{$npkg};
+	_append(1023, 6, 1, $pre{$npkg})    if defined $pre{$npkg};
+	_append(1024, 6, 1, $post{$npkg})   if defined $post{$npkg};
+	_append(1025, 6, 1, $preun{$npkg})  if defined $preun{$npkg};
+	_append(1026, 6, 1, $postun{$npkg}) if defined $postun{$npkg};
 
 	my $count;
 	$count = scalar @sizes;
@@ -986,7 +984,7 @@ foreach (@pkgnames)
 	      }
 	}
 	else {
-	    _append(1044, 6, 1, "$macros{name}-$macros{version}-src.rpm\0");
+	    _append(1044, 6, 1, "$macros{name}-$macros{version}-src.rpm");
 	    my $p = $packages{$_[0]}->[1]->{provides} || '';
 	    my $t2;
 	    ($pcnt, $t1112, $t2, $t1113)
@@ -1001,13 +999,13 @@ foreach (@pkgnames)
 	    }
 	}
 
-	_append(1085, 6, 1, "/bin/sh\0") if defined $pre{$npkg};
-	_append(1086, 6, 1, "/bin/sh\0") if defined $post{$npkg};
-	_append(1087, 6, 1, "/bin/sh\0") if defined $preun{$npkg};
-	_append(1088, 6, 1, "/bin/sh\0") if defined $postun{$npkg};
+	_append(1085, 6, 1, "/bin/sh") if defined $pre{$npkg};
+	_append(1086, 6, 1, "/bin/sh") if defined $post{$npkg};
+	_append(1087, 6, 1, "/bin/sh") if defined $preun{$npkg};
+	_append(1088, 6, 1, "/bin/sh") if defined $postun{$npkg};
 
-	$count = scalar @inos;
-	if ($hardlinks and $count) {
+	if ($hardlinks) {
+	    $count = scalar @inos;
 	    _append(1095, 4, $count, pack "N" . $count, (1) x $count);
 	    _append(1096, 4, $count, pack "N" . $count, @inos);
 	}
@@ -1024,11 +1022,11 @@ foreach (@pkgnames)
 	$count = scalar @dirs;
 	_append(1118, 8, $count, join("\0", @dirs) . "\0") if $count;
 
-	_append(1124, 6, 1, "cpio\0"); # payloadfmt
-	_append(1125, 6, 1, "$plcmpr_w_opts[0]\0"); # payloadcomp
-	_append(1126, 6, 1, "$plflgs\0"); # payloadflags
+	_append(1124, 6, 1, 'cpio'); # payloadfmt
+	_append(1125, 6, 1, $plcmpr_w_opts[0]); # payloadcomp
+	_append(1126, 6, 1, $plflgs); # payloadflags
 
-	_append(1132, 6, 1, "$macros{_target_platform}\0"); # platform
+	_append(1132, 6, 1, $macros{_target_platform}); # platform
 
 	my $ixcnt = scalar @cdh_data - $cdh_extras + 1;
 	my $sx = (0x10000000 - $ixcnt) * 16;

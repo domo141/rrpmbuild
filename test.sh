@@ -45,14 +45,12 @@ then
 	exit
 fi
 
-if test "$1" = 1 # run one rrpmbuild -bb test.spec w/
+if test "$1" = 1 # run one rrpmbuild -bb test.spec
 then
-	rm -rf build-rpms; mkdir build-rpms # should give in -D but...
-	script -ec "exec /usr/bin/time -p ./rrpmbuild.pl -bb x/test.spec"
-	mv typescript build-rpms
 	rm -rf t1-build-rpms
-	exec \
-	mv build-rpms t1-build-rpms
+	d=-D_rpmdir"' '"t1-build-rpms
+	script -ec "exec /usr/bin/time -p ./rrpmbuild.pl $d -bb x/test.spec"
+	exec mv typescript t1-build-rpms
 	exit not reached
 fi
 
