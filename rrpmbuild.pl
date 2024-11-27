@@ -756,8 +756,8 @@ foreach (@pkgnames)
 	my (@flist, %flist);
 	my $ino = 0;
 	foreach (@filelist) {
-	    $_->[5] = [ $_ ]; # no hard link detection
-	    $_->[6] = ++$ino;
+	    $_->[6] = [ $_ ]; # no hard link detection
+	    $_->[5] = ++$ino;
 	    push @flist, $_->[4] if ($_->[1] < 0);
 	}
 	if (@flist) {
@@ -782,30 +782,29 @@ foreach (@pkgnames)
 	my $ino = 0;
 	foreach (@filelist) {
 	    my @sb = lstat $_->[4] or die "lstat $_->[4]: $!\n";
-	    $_->[6] = $ino;
+	    $_->[5] = $ino;
 	    my $devino = $sb[0].':'.$sb[1];
 	    my $he = $devinos{$devino} // []; # hard links...
 	    if (@{$he}) {
-		$_->[6] = $he->[0][6]
+		$_->[5] = $he->[0][5]
 	    }
 	    else {
 		$devinos{$devino} = $he;
-		$_->[6] = ++$ino
+		$_->[5] = ++$ino
 	    }
 	    push @{$he}, $_;
-	    $_->[5] = $he;
+	    $_->[6] = $he;
 	    if ($_->[1] < 0) {
 		$_->[1] = $sb[2] & 0777;
 	    }
 	}
     }
 
-    # add to filelists in order (for rpm < 4.14 compatibility when hardlinks)
+    # add to headerlists in order (for rpm < 4.14 compatibility when hardlinks)
     foreach my $f (@filelist) {
 	my ($mode, $size, $mtime, $slnk) = file_lstat $f->[1], $f->[4];
-	my $l = $f->[5];
 	add2lists $f->[0], $mode, $size, $mtime, $slnk,
-	  $f->[2], $f->[3], $f->[4], $f->[6];
+	  $f->[2], $f->[3], $f->[4], $f->[5];
     }
 
     # move last to first (if more than one)
@@ -826,16 +825,16 @@ foreach (@pkgnames)
     my $sizet = 0;
     my $hardlinks = 0;
     foreach my $f (@filelist) {
-	my $l = $f->[5];
+	my $l = $f->[6];
 	next unless $f == $l->[0]; # hard links... use last
 	my $nlink = scalar @$l;
 	shift @$l;
 	my ($mode, $size, $mtime, $slnk) = file_lstat $f->[1], $f->[4];
 	foreach my $h (@{$l}) {
-	    hl_to_cpio $h->[0], $mode, $nlink, $mtime, $h->[6];
+	    hl_to_cpio $h->[0], $mode, $nlink, $mtime, $h->[5];
 	    $hardlinks++;
 	}
-	file_to_cpio $f->[0], $mode, $nlink, $mtime, $size, $f->[4], $f->[6];
+	file_to_cpio $f->[0], $mode, $nlink, $mtime, $size, $f->[4], $f->[5];
 	$sizet += $size;
     }
     close_cpio_file;
