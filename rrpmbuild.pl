@@ -741,6 +741,7 @@ foreach (@pkgnames)
 	else { push @md5sums, '' }
     }
 
+    $_->[0] =~ tr[/][\0] foreach @filelist; # for sorting -- restored later
     @filelist = sort { $a->[0] cmp $b->[0] } @filelist;
     my %devinos;
 
@@ -804,6 +805,7 @@ foreach (@pkgnames)
     my $sizet = 0;
     my $hardlinks = 0;
     foreach my $f (@filelist) {
+	$_->[0] =~ tr[\0][/] foreach @filelist; # restore /s in filenames
 	my $l = $f->[5];
 	next unless $f == $l->[0]; # hard links... use last
 	my $nlink = scalar @$l;

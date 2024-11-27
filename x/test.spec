@@ -61,6 +61,10 @@ umask 022
 mkdir -p %{buildroot}/%thedd
 cp x/test.spec %{buildroot}/%thedd
 echo other > %{buildroot}/%thedd/toinenkin
+mkdir %{buildroot}/%thedd/ee
+echo ee_h > %{buildroot}/%thedd/ee_here
+echo ee/f > %{buildroot}/%thedd/ee/file
+echo ee.h > %{buildroot}/%thedd/ee.here
 echo kikka > %{buildroot}/%thedd/kuutonen
 echo aito > %{buildroot}/%thedd/aamu
 ln -s test.spec %{buildroot}/%thedd/slnk.spec
