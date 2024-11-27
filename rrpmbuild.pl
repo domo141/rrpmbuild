@@ -35,10 +35,12 @@ use Digest;
 # with perl 5.10.x // 2010-06-10 too
 # As of 2024-09-25 things may have improved, and produdes more or less
 # good rpm v4 format packages...
+# As of 2024-11, symbolic and hard link support were added; some rpm(8)
+# versions between 4.11 and 4.20 (inclusive!) has been used when tested.
 
 # Welcome to the source of 'restricted' rpmbuild. The 'restrictions' are:
 #  does not check things that "real" rpm does (e.g. no binaries in noarch pkg)
-#  does not recurse! (some is easy to add (and even full recursion))
+#  %macros ("recursive") evaluated (only) once or twice...
 #  no fancy variables
 #  a set of %macros just not supported
 #  only binary rpms (-bs probably does not work too well...)
@@ -472,11 +474,9 @@ if (! $building_src_pkg) {
     execute_stage 'install', join '', @install if @install;
 }
 
-my $ino;
 sub open_cpio_file($)
 {
     open STDOUT, '>', $_[0] or die "Open $_[0] failed: $!\n";
-    $ino = 1;
 }
 
 # knows files, directories and symlinks (not adding fileclass (yet))
@@ -487,20 +487,22 @@ sub file_lstat($$)
 
     my @sb = lstat $file or die "lstat '$file': $!\n";
     $mtime = ($sde eq '')? $sb[9]: $buildtime;
+    my $slnk = '';
     if (S_ISLNK($sb[2])) {
 	$size = $sb[7]; $mode = 0120777;
+	$slnk = readlink $file;
     }
     elsif (S_ISDIR($sb[2])) {
 	$size = 0; $mode += 0040000;
     }
     else { $size = $sb[7]; $mode += 0100000; }
 
-    return ($mode, $size, $mtime);# if wantarray;
+    return ($mode, $size, $mtime, $slnk);# if wantarray;
 }
 
-sub hl_to_cpio($$$$)
+sub hl_to_cpio($$$$$)
 {
-    my ($name, $mode, $nlink, $mtime) = @_;
+    my ($name, $mode, $nlink, $mtime, $ino) = @_;
 
     my $namesize = length($name) + 1;
     my $hdrbytes = 110 + $namesize;
@@ -511,9 +513,9 @@ sub hl_to_cpio($$$$)
        $nlink, $mtime, 0, 0,0,0,0, $namesize, $name), $hdrbytes;
 }
 
-sub file_to_cpio($$$$$$)
+sub file_to_cpio($$$$$$$)
 {
-    my ($name, $mode, $nlink, $mtime, $size, $file) = @_;
+    my ($name, $mode, $nlink, $mtime, $size, $file, $ino) = @_;
 
     my $namesize = length($name) + 1;
     my $hdrbytes = 110 + $namesize;
@@ -523,25 +525,22 @@ sub file_to_cpio($$$$$$)
       ('070701' . '%08x' x 12 . "00000000%s\0\0\0\0", $ino, $mode, 0, 0,
        $nlink, $mtime, $size, 0,0,0,0, $namesize, $name), $hdrbytes;
 
-    my $slnk = '';
-    if ($size) {
-	if ($mode == 0120777) {
-	    $slnk = readlink $file;
-	    syswrite STDOUT, $slnk;
-	} else {
-	    system ('/bin/cat', $file)
-	}
+    return unless $size;
+
+    if ($mode == 0120777) {
+	my $slnk = readlink $file;
+	syswrite STDOUT, $slnk;
+    } else {
+	system ('/bin/cat', $file)
     }
     if ($size & 0x03) {
 	syswrite STDOUT, "\0\0\0", 4 - ($size & 0x03);
     }
-    return $slnk
 }
 
 sub close_cpio_file()
 {
-    $ino = 0;
-    file_to_cpio('TRAILER!!!', 0, 1, 0, 0, undef);
+    file_to_cpio('TRAILER!!!', 0, 1, 0, 0, undef, 0);
     # not making size multiple of 512 (as doesn't rpm do either)
     open STDOUT, ">&STDERR" or die;
 }
@@ -597,11 +596,13 @@ foreach (@pkgnames)
 	warn "Adding doc file $_[0]\n";
 	my $dname = "usr/share/doc/$swname";
 	unless (defined $havedoc) {
-	    push @filelist, [ $dname, $dmode, $uname, $gname, '.' ];
+	    push @filelist, [ $dname, $dmode, $uname, $gname, '.',
+			      undef, undef ];
 	    $havedoc = 1;
 	}
 	my $fname = $dname . '/' . $_[0];
-	push @filelist, [ $fname, $fmode, $uname, $gname, $_[0] ];
+	push @filelist, [ $fname, $fmode, $uname, $gname, $_[0],
+			  undef, undef ];
     }
 
     my @_flist;
@@ -611,7 +612,8 @@ foreach (@pkgnames)
 	if (-d "$instroot/$_[0]") {
 	    warn "Adding directory $_[0]\n";
 
-	    push @filelist, [ $_[0], $dmode, $uname, $gname, "$instroot/$_[0]" ];
+	    push @filelist, [ $_[0], $dmode, $uname, $gname, "$instroot/$_[0]",
+			      undef, undef ];
 
 	    return if $_[1];
 	    sub _f() { push @_flist, (substr $_, $instrlen + 1); }
@@ -623,7 +625,8 @@ foreach (@pkgnames)
 	    return;
 	}
 	warn "Adding file $_[0]\n";
-	push @filelist, [ $_[0], $fmode, $uname, $gname, "$instroot/$_[0]" ];
+	push @filelist, [ $_[0], $fmode, $uname, $gname, "$instroot/$_[0]",
+			  undef, undef ]
 
 	#warn 'XXXX 2 ', \@filelist, ' ', "@filelist", "\n";
     }
@@ -705,7 +708,7 @@ foreach (@pkgnames)
     our (@inos,  @unames, @gnames, @md5sums);
     local (@files, @dirindexes, @dirs,%dirs, @modes, @sizes, @mtimes, @flntos);
     local (@inos,  @unames, @gnames, @md5sums);
-    sub add2lists($$$$$$$$)
+    sub add2lists($$$$$$$$$)
     {
 	sub getmd5sum($)
 	{
@@ -723,7 +726,7 @@ foreach (@pkgnames)
 	    $di = $dirs{$dir} = scalar @dirs;
 	    push @dirs, $dir;
 	}
-	push @inos, $ino;
+	push @inos, $_[8];
 	push @files, $base;
 	push @dirindexes, $di;
 
@@ -751,8 +754,10 @@ foreach (@pkgnames)
     # -- as of 2024-10: add dev:ino (for hard links) to unices part --
     if ($^O eq 'msys') {
 	my (@flist, %flist);
+	my $ino = 0;
 	foreach (@filelist) {
 	    $_->[5] = [ $_ ]; # no hard link detection
+	    $_->[6] = ++$ino;
 	    push @flist, $_->[4] if ($_->[1] < 0);
 	}
 	if (@flist) {
@@ -774,11 +779,19 @@ foreach (@pkgnames)
 	}
     }
     else { # unices!
+	my $ino = 0;
 	foreach (@filelist) {
 	    my @sb = lstat $_->[4] or die "lstat $_->[4]: $!\n";
+	    $_->[6] = $ino;
 	    my $devino = $sb[0].':'.$sb[1];
 	    my $he = $devinos{$devino} // []; # hard links...
-	    $devinos{$devino} = $he unless @{$he};
+	    if (@{$he}) {
+		$_->[6] = $he->[0][6]
+	    }
+	    else {
+		$devinos{$devino} = $he;
+		$_->[6] = ++$ino
+	    }
 	    push @{$he}, $_;
 	    $_->[5] = $he;
 	    if ($_->[1] < 0) {
@@ -787,8 +800,16 @@ foreach (@pkgnames)
 	}
     }
 
+    # add to filelists in order (for rpm < 4.14 compatibility when hardlinks)
+    foreach my $f (@filelist) {
+	my ($mode, $size, $mtime, $slnk) = file_lstat $f->[1], $f->[4];
+	my $l = $f->[5];
+	add2lists $f->[0], $mode, $size, $mtime, $slnk,
+	  $f->[2], $f->[3], $f->[4], $f->[6];
+    }
+
     # move last to first (if more than one)
-    # -- used in next unless $f == $l->[0] -- hard links...
+    # -- used in next unless $f == $l->[0] -- hard links order in cpio
     foreach (values %devinos) {
 	my $l = pop @{$_};
 	unshift @{$_}, $l;
@@ -809,16 +830,13 @@ foreach (@pkgnames)
 	next unless $f == $l->[0]; # hard links... use last
 	my $nlink = scalar @$l;
 	shift @$l;
-	my ($mode, $size, $mtime) = file_lstat $f->[1], $f->[4];
+	my ($mode, $size, $mtime, $slnk) = file_lstat $f->[1], $f->[4];
 	foreach my $h (@{$l}) {
-	    hl_to_cpio $h->[0], $mode, $nlink, $mtime;
-	    add2lists $h->[0], $mode, $size, $mtime, 0, $h->[2], $h->[3], $h->[4];
+	    hl_to_cpio $h->[0], $mode, $nlink, $mtime, $h->[6];
 	    $hardlinks++;
 	}
-	my $slnk = file_to_cpio $f->[0], $mode, $nlink, $mtime, $size, $f->[4];
-	add2lists $f->[0], $mode, $size, $mtime, $slnk, $f->[2], $f->[3], $f->[4];
+	file_to_cpio $f->[0], $mode, $nlink, $mtime, $size, $f->[4], $f->[6];
 	$sizet += $size;
-	$ino++;
     }
     close_cpio_file;
 
