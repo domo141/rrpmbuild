@@ -785,7 +785,7 @@ foreach (@pkgnames)
 	    my @sb = lstat $_->[4] or die "lstat $_->[4]: $!\n";
 	    $_->[5] = $ino;
 	    my $devino = $sb[0].':'.$sb[1];
-	    my $he = $devinos{$devino} // []; # hard links...
+	    my $he = $devinos{$devino} // []; # list of hard links...
 	    if (@{$he}) {
 		$_->[5] = $he->[0][5]
 	    }
@@ -809,9 +809,9 @@ foreach (@pkgnames)
 	  $f->[2], $f->[3], $f->[4], $f->[5];
     }
 
-    # move last to first (if more than one)
-    # -- used in next unless $f == $l->[0] -- hard links order in cpio
+    # move last (hardlink) to first (when more than one listed as same)...
     foreach (values %devinos) {
+	next unless @{$_} > 1;
 	my $l = pop @{$_};
 	unshift @{$_}, $l;
     }
@@ -828,7 +828,7 @@ foreach (@pkgnames)
     my $hardlinks = 0;
     foreach my $f (@filelist) {
 	my $l = $f->[6];
-	next unless $f == $l->[0]; # hard links... use last
+	next unless $f == $l->[0]; # hard links... last, unshifted above
 	my $nlink = scalar @$l;
 	shift @$l;
 	my ($mode, $size, $mtime, $slnk) = @{$f->[7]};
@@ -929,7 +929,8 @@ foreach (@pkgnames)
 		    join("\0", @depversion) . "\0")
 	}
 
-	_append(100, 6, 1, 'C'); # hdri18n
+	#_append(100, 6, 1, 'C'); # hdri18n
+	_append(100, 8, 1, "C\0"); # hdri18n
 
 	_append(1000, 6, 1, $rpmname); # name
 	_append(1001, 6, 1, $macros{version});
@@ -937,13 +938,13 @@ foreach (@pkgnames)
 	_append(1004, 9, 1, $packages{$_[0]}->[1]->{summary});
 	my $description = join '', @{$description{$_[0]}};
 	$description =~ s/\s+$//;
-	_append(1005, 6, 1, $description);
+	_append(1005, 9, 1, $description);
 	_append(1006, 4, 1, pack("N", $buildtime) );
 	_append(1007, 6, 1, $buildhost);
 	_append(1009, 4, 1, pack("N", $sizet) ); # size
 	_append(1014, 6, 1, $packages{''}->[1]->{license});
 	my $group = $packages{$_[0]}->[1]->{group} // 'Unspecified';
-	_append(1016, 6, 1, $group);
+	_append(1016, 9, 1, $group);
 	if (! $building_src_pkg) {
 	    _append(1021, 6, 1, $target_os);
 	    _append(1022, 6, 1, $target_arch);
