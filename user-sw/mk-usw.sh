@@ -8,7 +8,7 @@
 #	    All rights reserved
 #
 # Created: Tue 01 Oct 2024 20:15:45 EEST too
-# Last modified: Thu 28 Nov 2024 17:36:03 +0200 too
+# Last modified: Mon 02 Dec 2024 19:19:46 +0200 too
 
 case ${BASH_VERSION-} in *.*) set -o posix; shopt -s xpg_echo; esac
 case ${ZSH_VERSION-} in *.*) emulate ksh; esac
@@ -79,7 +79,7 @@ else
    ddn0=${rp0%/*/*}
    echo > $td/usw.spec "
 Name: user-sw
-Summary: user sw in $dn0
+Summary: user sw in $rp1/
 Version: $v
 Release: $r
 License: LGPL v2.1
