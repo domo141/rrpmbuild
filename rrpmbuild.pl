@@ -139,6 +139,10 @@ usage unless defined $building_src_pkg;
 die "$0: missing specfile\n" unless defined $specfile;
 die "$0: too many arguments\n" if @ARGV > 0;
 
+my $ctx_md5 = Digest->new('MD5');
+my $ctx_sha1 = Digest->new('SHA-1');
+my $ctx_sha256 = Digest->new('SHA-256');
+
 my $rpmdir = $macros{'_rpmdir'} // 'build-rpms';
 
 my ($host_os, $host_arch) = grep { $_ = lc } split /\s+/, qx/uname -m -s/;
@@ -713,11 +717,11 @@ foreach (@pkgnames)
     {
 	sub getmd5sum($)
 	{
-	    my $ctx = Digest->new('MD5');
 	    open J, '<', $_[0] or die $!;
-	    $ctx->addfile(*J);
+	    $ctx_md5->reset;
+	    $ctx_md5->addfile(*J);
 	    close J;
-	    return $ctx->hexdigest;
+	    return $ctx_md5->hexdigest;
 	}
 
 	$_[0] =~ m%((.*/)?)(.+)% or die "'$_[0]': invalid path\n";
@@ -1047,14 +1051,14 @@ foreach (@pkgnames)
     unlink $cpiofile_zz;
     system(@plcmpr_w_opts, $cpiofile) == 0
 	or die "'@plcmpr_w_opts $cpiofile' failed\n";
-    my $ctx;
-    $ctx = Digest->new('MD5'); $ctx->add($dhdr);
-    open J, $cpiofile_zz or die $!; $ctx->addfile(*J); close J;
-    my $md5 = $ctx->digest;
-    $ctx = Digest->new('SHA-1'); $ctx->add($dhdr);
-    my $sha1 = $ctx->hexdigest;
-    $ctx = Digest->new('SHA-256'); $ctx->add($dhdr);
-    my $sha256 = $ctx->hexdigest;
+
+    $ctx_md5->reset; $ctx_md5->add($dhdr);
+    open J, $cpiofile_zz or die $!; $ctx_md5->addfile(*J); close J;
+    my $md5 = $ctx_md5->digest;
+    $ctx_sha1->reset; $ctx_sha1->add($dhdr);
+    my $sha1 = $ctx_sha1->hexdigest;
+    $ctx_sha256->reset; $ctx_sha256->add($dhdr);
+    my $sha256 = $ctx_sha256->hexdigest;
     my $shdr = createsigheader length($dhdr) + -s $cpiofile_zz,
                                $md5, $sha1, $sha256, $cpiosize;
     open STDOUT, '>', "$pkgfbase.rpm.wip" or die $!;
