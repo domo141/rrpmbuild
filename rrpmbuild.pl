@@ -66,7 +66,7 @@ my %packages = ('', [ [ ], { } ] );
 
 my (@prep, @build, @install, @clean);
 my (%description, %files);
-my (%pre, %post, %preun, %postun);
+my (%pre, %post, %preun, %postun, %pretrans, %posttrans);
 my @changelog;
 
 sub usage()
@@ -268,7 +268,8 @@ sub rest_macros()
 
 my %stanzas = ( package => 1, description => 1, changelog => 1,
 		prep => 1, build => 1, install => 1, clean => 1,
-		files => 1, pre => 1, post => 1, preun => 1, postun => 1 );
+		files => 1, pre => 1, post => 1, preun => 1, postun => 1,
+		pretrans => 1, posttrans => 1 );
 
 sub readspec()
 {
@@ -396,6 +397,9 @@ sub readspec()
 	elsif ($1 eq 'post') { readlines2string $post{$2} }
 	elsif ($1 eq 'preun') { readlines2string $preun{$2} }
 	elsif ($1 eq 'postun') { readlines2string $postun{$2} }
+
+	elsif ($1 eq 'pretrans') { readlines2string $pretrans{$2} }
+	elsif ($1 eq 'posttrans') { readlines2string $posttrans{$2} }
 
 	elsif ($1 eq 'changelog') { readlines \@changelog }
 
@@ -1032,6 +1036,11 @@ foreach (@pkgnames)
 	_append(1126, 6, 1, $plflgs); # payloadflags
 
 	_append(1132, 6, 1, $macros{_target_platform}); # platform
+
+	_append(1151, 6, 1, $pretrans{$npkg})  if defined $pretrans{$npkg};
+	_append(1152, 6, 1, $posttrans{$npkg}) if defined $posttrans{$npkg};
+	_append(1153, 6, 1, "/bin/sh") if defined $pretrans{$npkg};
+	_append(1154, 6, 1, "/bin/sh") if defined $posttrans{$npkg};
 
 	my $ixcnt = scalar @cdh_data - $cdh_extras + 1;
 	my $sx = (0x10000000 - $ixcnt) * 16;
